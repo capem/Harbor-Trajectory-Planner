@@ -124,6 +124,7 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
                   </>
                 )}
               </div>
+              {leg.command !== NavigationCommand.END && (
                <button
                   onClick={() => onDeleteWaypoint(leg.id)}
                   className="ml-4 flex-shrink-0 p-2 text-gray-500 hover:text-red-500 hover:bg-gray-700 rounded-full transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
@@ -132,6 +133,7 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
                 >
                   <TrashIcon className="w-5 h-5" />
                 </button>
+              )}
             </li>
           ))}
         </ul>

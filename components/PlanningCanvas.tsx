@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand } from '../types';
+import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState } from '../types';
 
 // Since we don't have @types/leaflet installed from npm, we declare a global L
 declare const L: any;
@@ -15,6 +15,7 @@ interface PlanningCanvasProps {
   isMeasuring: boolean;
   isPlotting: boolean;
   hoveredLegId?: number | null;
+  animationState: AnimationState | null;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -40,20 +41,6 @@ function getDistance(p1: GeoPoint, p2: GeoPoint): number {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c; // in metres
-}
-
-function getBearing(p1: GeoPoint, p2: GeoPoint): number {
-  const lat1 = toRad(p1.lat);
-  const lng1 = toRad(p1.lng);
-  const lat2 = toRad(p2.lat);
-  const lng2 = toRad(p2.lng);
-
-  const y = Math.sin(lng2 - lng1) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) -
-            Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
-  const theta = Math.atan2(y, x);
-  const brng = (toDeg(theta) + 360) % 360; // in degrees
-  return brng;
 }
 
 /**
@@ -88,37 +75,27 @@ function getShipPolygonCoords(center: GeoPoint, length: number, beam: number, he
     const l = length / 2;
     const b = beam / 2;
 
-    // The bow curve starts at 50% of the length from the center.
     const bowShoulderY = l * 0.5;
 
-    // Define the ship's hull points in a local coordinate system (y: bow, x: starboard)
-    // Ordered for drawing a polygon.
     const hullPoints = [
         { x: -b, y: -l },                  // 1. Stern-port
         { x: b, y: -l },                   // 2. Stern-starboard
         { x: b, y: bowShoulderY },         // 3. Bow-shoulder-starboard
-        { x: b * 0.5, y: l * 0.9 },        // 4. Bow-curve-point-starboard (for rounded shape)
+        { x: b * 0.5, y: l * 0.9 },        // 4. Bow-curve-point-starboard
         { x: 0, y: l },                    // 5. Bow tip
-        { x: -b * 0.5, y: l * 0.9 },       // 6. Bow-curve-point-port (for rounded shape)
+        { x: -b * 0.5, y: l * 0.9 },       // 6. Bow-curve-point-port
         { x: -b, y: bowShoulderY },         // 7. Bow-shoulder-port
     ];
 
-    // Convert local hull points to geographic coordinates
     return hullPoints.map(point => {
-        // Calculate distance and angle from the center to the point
         const distance = Math.sqrt(point.x * point.x + point.y * point.y);
         const angle = toDeg(Math.atan2(point.x, point.y));
-        
-        // Adjust the angle by the ship's bearing
         const finalBearing = heading + angle;
-        
-        // Calculate the geographic coordinate of the point
         return destinationPoint(center, distance, finalBearing);
     });
 }
 
 
-// Helper function for Catmull-Rom spline interpolation (alpha = 0.5)
 function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): number {
   return 0.5 * (
     (2 * p1) +
@@ -128,83 +105,95 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
   );
 }
 
-const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, legs, zoomToFitTrigger, isMeasuring, isPlotting, hoveredLegId }) => {
+const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ 
+    waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, 
+    legs, zoomToFitTrigger, isMeasuring, isPlotting, hoveredLegId, animationState 
+}) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
+  const animationShipRef = useRef<any>(null);
 
-  // Refs for measurement tool
   const measureLineRef = useRef<any>(null);
   const measureTooltipRef = useRef<any>(null);
-  const measureStartPointRef = useRef<any>(null); // Leaflet LatLng object
+  const measureStartPointRef = useRef<any>(null); 
   
-  // Refs for live plotting preview
   const plotPreviewLineRef = useRef<any>(null);
   const plotPreviewTooltipRef = useRef<any>(null);
 
-  // Initialize map
   useEffect(() => {
     if (mapContainerRef.current && !mapRef.current) {
-      const map = L.map(mapContainerRef.current).setView([40.7128, -74.0060], 13); // Default to NYC Harbor
-      
+      const map = L.map(mapContainerRef.current).setView([40.7128, -74.0060], 13);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
-
       mapRef.current = map;
     }
-  }, []);
+  }, [mapContainerRef]);
 
-  // Effect to handle mode switching (plotting vs. measuring vs. neutral)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (animationState) {
+        const { position, heading } = animationState;
+        const shipCoords = getShipPolygonCoords(position, ship.length, ship.beam, heading);
+        const latLngs = shipCoords.map(p => [p.lat, p.lng]);
+
+        if (animationShipRef.current) {
+            animationShipRef.current.setLatLngs(latLngs);
+        } else {
+            animationShipRef.current = L.polygon(latLngs, {
+                color: '#f59e0b',      
+                fillColor: '#f59e0b',
+                fillOpacity: 0.8,
+                weight: 2,
+                interactive: false,
+                zIndexOffset: 1000
+            }).addTo(map);
+        }
+    } else {
+        if (animationShipRef.current) {
+            map.removeLayer(animationShipRef.current);
+            animationShipRef.current = null;
+        }
+    }
+  }, [animationState, ship.length, ship.beam]);
+
   useEffect(() => {
     const map = mapRef.current;
     const mapContainer = mapContainerRef.current;
     if (!map || !mapContainer) return;
 
-    // --- Always clean up previous listeners before setting new ones ---
     map.off('click');
     map.off('mousemove');
     map.off('mouseout');
     mapContainer.classList.remove('plotting-mode', 'measuring-active');
 
-    // --- Helper cleanup functions ---
     const cleanupMeasureLayers = () => {
         if (measureLineRef.current) map.removeLayer(measureLineRef.current);
         if (measureTooltipRef.current) map.removeLayer(measureTooltipRef.current);
-        measureLineRef.current = null;
-        measureTooltipRef.current = null;
-        measureStartPointRef.current = null;
+        measureLineRef.current = null; measureTooltipRef.current = null; measureStartPointRef.current = null;
     }
-    
     const cleanupPlotPreviewLayers = () => {
         if (plotPreviewLineRef.current) map.removeLayer(plotPreviewLineRef.current);
         if (plotPreviewTooltipRef.current) map.removeLayer(plotPreviewTooltipRef.current);
-        plotPreviewLineRef.current = null;
-        plotPreviewTooltipRef.current = null;
+        plotPreviewLineRef.current = null; plotPreviewTooltipRef.current = null;
     }
     
     if (isMeasuring) {
-        cleanupPlotPreviewLayers();
-        map.dragging.disable();
-        mapContainer.classList.add('measuring-active');
-
+        cleanupPlotPreviewLayers(); map.dragging.disable(); mapContainer.classList.add('measuring-active');
         const handleMeasureClick = (e: any) => {
-            if (measureStartPointRef.current) { // Second click
+            if (measureStartPointRef.current) {
                 map.off('mousemove'); 
                 const finalDistance = getDistance(measureStartPointRef.current, e.latlng);
                 measureTooltipRef.current?.setContent(`<strong>Total:</strong> ${finalDistance.toFixed(1)} m`);
                 measureLineRef.current?.setStyle({ dashArray: null });
                 measureStartPointRef.current = null; 
-            } else { // First click
-                cleanupMeasureLayers();
-                measureStartPointRef.current = e.latlng;
-                measureLineRef.current = L.polyline([e.latlng, e.latlng], {
-                    color: '#FBBF24', weight: 3, dashArray: '5, 10', interactive: false,
-                }).addTo(map);
-                measureTooltipRef.current = L.tooltip({
-                    permanent: true, direction: 'right', offset: L.point(10, 0), className: 'measurement-tooltip'
-                }).setLatLng(e.latlng).setContent('Measuring...').addTo(map);
-
+            } else {
+                cleanupMeasureLayers(); measureStartPointRef.current = e.latlng;
+                measureLineRef.current = L.polyline([e.latlng, e.latlng], { color: '#FBBF24', weight: 3, dashArray: '5, 10', interactive: false }).addTo(map);
+                measureTooltipRef.current = L.tooltip({ permanent: true, direction: 'right', offset: L.point(10, 0), className: 'measurement-tooltip' }).setLatLng(e.latlng).setContent('Measuring...').addTo(map);
                 map.on('mousemove', (moveEvent: any) => {
                     if (!measureStartPointRef.current) return;
                     const currentPoint = moveEvent.latlng;
@@ -216,207 +205,99 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
         };
         map.on('click', handleMeasureClick);
     } else if (isPlotting) {
-        cleanupMeasureLayers();
-        map.dragging.enable();
-        mapContainer.classList.add('plotting-mode');
+        cleanupMeasureLayers(); map.dragging.enable(); mapContainer.classList.add('plotting-mode');
         map.on('click', (e: any) => onAddWaypoint({ lat: e.latlng.lat, lng: e.latlng.lng }));
-        
-        // Add live plot preview logic
         if (waypoints.length > 0) {
             const lastWaypoint = waypoints[waypoints.length - 1];
             map.on('mousemove', (e: any) => {
                 const currentLatLng = e.latlng;
-                
                 if (!plotPreviewLineRef.current) {
-                    plotPreviewLineRef.current = L.polyline([lastWaypoint, currentLatLng], {
-                        color: '#06b6d4', weight: 2, dashArray: '8, 8', interactive: false,
-                    }).addTo(map);
+                    plotPreviewLineRef.current = L.polyline([lastWaypoint, currentLatLng], { color: '#06b6d4', weight: 2, dashArray: '8, 8', interactive: false }).addTo(map);
                 } else {
                     plotPreviewLineRef.current.setLatLngs([lastWaypoint, currentLatLng]);
                 }
-
                 const distance = getDistance(lastWaypoint, currentLatLng);
-                const bearing = getBearing(lastWaypoint, currentLatLng);
-                const tooltipContent = `
-                  <div class="text-left">
-                    <div><strong>Distance:</strong> ${distance.toFixed(1)} m</div>
-                    <div><strong>Course:</strong> ${bearing.toFixed(1)}°</div>
-                  </div>
-                `;
-
+                const tooltipContent = `<strong>Dist:</strong> ${distance.toFixed(1)} m`;
                 if (!plotPreviewTooltipRef.current) {
-                    plotPreviewTooltipRef.current = L.tooltip({
-                        permanent: true, direction: 'right', offset: L.point(15, 0), className: 'measurement-tooltip'
-                    }).setLatLng(currentLatLng).setContent(tooltipContent).addTo(map);
+                    plotPreviewTooltipRef.current = L.tooltip({ permanent: true, direction: 'right', offset: L.point(15, 0), className: 'measurement-tooltip' }).setLatLng(currentLatLng).setContent(tooltipContent).addTo(map);
                 } else {
                     plotPreviewTooltipRef.current.setLatLng(currentLatLng).setContent(tooltipContent);
                 }
             });
-
-            map.on('mouseout', () => {
-                cleanupPlotPreviewLayers();
-            });
+            map.on('mouseout', cleanupPlotPreviewLayers);
         }
-    } else { // Neutral mode
-        map.dragging.enable();
-        cleanupMeasureLayers();
-        cleanupPlotPreviewLayers();
+    } else {
+        map.dragging.enable(); cleanupMeasureLayers(); cleanupPlotPreviewLayers();
     }
-
-    return () => { // General cleanup on mode change
-        map.dragging.enable();
-        map.off('click');
-        map.off('mousemove');
-        map.off('mouseout');
-        cleanupMeasureLayers();
-        cleanupPlotPreviewLayers();
+    return () => {
+        map.dragging.enable(); map.off('click'); map.off('mousemove'); map.off('mouseout');
+        cleanupMeasureLayers(); cleanupPlotPreviewLayers();
     };
   }, [isMeasuring, isPlotting, onAddWaypoint, waypoints]);
 
-  // Update map layers when waypoints or measuring state change
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Clear previous layers
     layersRef.current.forEach(layer => map.removeLayer(layer));
     layersRef.current = [];
     
-    const isInteractive = !isMeasuring && !isPlotting;
+    const isInteractive = !isMeasuring && !isPlotting && !animationState;
 
-    // Waypoint Markers
     const waypointMarkers = waypoints.map((wp, index) => {
       const leg = legs.find(l => l.start.id === wp.id);
       const isViolation = leg?.turnRadiusViolation;
-      
-      const iconHtml = `
-        <div class="relative flex items-center justify-center">
-          ${isViolation ? '<div class="absolute w-8 h-8 rounded-full border-2 border-red-500 animate-ping opacity-75"></div>' : ''}
-          <div class="absolute w-6 h-6 rounded-full bg-sky-500 border-2 border-white shadow-lg"></div>
-          <div class="absolute -top-6 text-center text-white font-bold text-sm" style="text-shadow: 0 0 4px black, 0 0 4px black;">WP${index + 1}</div>
-        </div>
-      `;
-      
+      const iconHtml = `<div class="relative flex items-center justify-center">${isViolation ? '<div class="absolute w-8 h-8 rounded-full border-2 border-red-500 animate-ping opacity-75"></div>' : ''}<div class="absolute w-6 h-6 rounded-full bg-sky-500 border-2 border-white shadow-lg"></div><div class="absolute -top-6 text-center text-white font-bold text-sm" style="text-shadow: 0 0 4px black, 0 0 4px black;">WP${index + 1}</div></div>`;
       const marker = L.marker([wp.lat, wp.lng], {
-        draggable: isInteractive,
-        interactive: isInteractive,
-        icon: L.divIcon({
-          className: 'waypoint-marker',
-          html: iconHtml,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
-        })
+        draggable: isInteractive, interactive: isInteractive,
+        icon: L.divIcon({ className: 'waypoint-marker', html: iconHtml, iconSize: [24, 24], iconAnchor: [12, 12] })
       }).addTo(map);
-
       if (isInteractive) {
-        marker.on('dragend', (e: any) => {
-          onUpdateWaypoint(wp.id, e.target.getLatLng());
-        });
-        marker.on('contextmenu', () => {
-          onDeleteWaypoint(wp.id);
-        });
+        marker.on('dragend', (e: any) => onUpdateWaypoint(wp.id, e.target.getLatLng()));
+        marker.on('contextmenu', () => onDeleteWaypoint(wp.id));
       }
-      
       return marker;
     });
     layersRef.current.push(...waypointMarkers);
 
-    // Trajectory and Course Lines (drawn per segment for highlighting)
     if (waypoints.length > 1) {
         waypoints.slice(0, -1).forEach((wp, i) => {
-            const leg = legs[i];
-            if (!leg) return;
-
+            const leg = legs[i]; if (!leg) return;
             const isHovered = leg.id === hoveredLegId;
-
-            // --- Smooth Path Segment ---
-            const p0 = waypoints[i - 1] || waypoints[i];
-            const p1 = waypoints[i];
-            const p2 = waypoints[i + 1];
-            const p3 = waypoints[i + 2] || waypoints[i + 1];
-            
-            const interpolator = (t: number) => ({
-                lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat),
-                lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng),
-            });
-
+            const p0 = waypoints[i - 1] || waypoints[i], p1 = waypoints[i], p2 = waypoints[i + 1], p3 = waypoints[i + 2] || waypoints[i + 1];
+            const interpolator = (t: number) => ({ lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat), lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng) });
             const segmentPoints = Array.from({ length: 15 }, (_, i) => i / 15).map(interpolator);
-            segmentPoints.push(p2); // Ensure the segment connects perfectly to the next waypoint
-            
-            // Glow effect for hovered line
+            segmentPoints.push(p2);
             if (isHovered) {
-                const glowPath = L.polyline(segmentPoints.map(p => [p.lat, p.lng]), {
-                    color: '#06b6d4', weight: 10, opacity: 0.3, interactive: false,
-                }).addTo(map);
-                layersRef.current.push(glowPath);
+                layersRef.current.push(L.polyline(segmentPoints.map(p => [p.lat, p.lng]), { color: '#06b6d4', weight: 10, opacity: 0.3, interactive: false }).addTo(map));
             }
-
-            const smoothPath = L.polyline(segmentPoints.map(p => [p.lat, p.lng]), {
-                color: isHovered ? '#67e8f9' : 'rgba(255, 255, 255, 0.7)',
-                weight: isHovered ? 4 : 3,
-                dashArray: '10, 10',
-                interactive: false
-            }).addTo(map);
-            layersRef.current.push(smoothPath);
-
-            // --- Course Line Segment ---
-            const coursePath = L.polyline([[leg.start.lat, leg.start.lng], [leg.end.lat, leg.end.lng]], {
-                color: isHovered ? '#0891b2' : 'rgba(107, 114, 128, 0.8)',
-                weight: isHovered ? 2 : 1,
-                dashArray: '2, 8',
-                interactive: false
-            }).addTo(map);
-            layersRef.current.push(coursePath);
+            layersRef.current.push(L.polyline(segmentPoints.map(p => [p.lat, p.lng]), { color: isHovered ? '#67e8f9' : 'rgba(255, 255, 255, 0.7)', weight: isHovered ? 4 : 3, dashArray: '10, 10', interactive: false }).addTo(map));
+            layersRef.current.push(L.polyline([[leg.start.lat, leg.start.lng], [leg.end.lat, leg.end.lng]], { color: isHovered ? '#0891b2' : 'rgba(107, 114, 128, 0.8)', weight: isHovered ? 2 : 1, dashArray: '2, 8', interactive: false }).addTo(map));
         });
     }
     
-    // Ship Polygons
-    if (legs.length > 0) {
+    if (legs.length > 0 && !animationState) {
         const shipPolygons = legs.map((leg) => {
             let color: string;
             switch (leg.command) {
-            case NavigationCommand.START:
-                color = '#10B981'; // green-500
-                break;
-            case NavigationCommand.END:
-                color = '#FBBF24'; // yellow-400, consistent with info panel
-                break;
-            default:
-                color = '#3B82F6'; // blue-500 for intermediate points
-                break;
+            case NavigationCommand.START: color = '#10B981'; break;
+            case NavigationCommand.END: color = '#FBBF24'; break;
+            default: color = '#3B82F6'; break;
             }
-
             const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, leg.heading);
-            
-            const shipPolygon = L.polygon(shipCoords.map(p => [p.lat, p.lng]), {
-                color: color,
-                fillColor: color,
-                fillOpacity: 0.5,
-                weight: 1,
-                interactive: false,
-                zIndexOffset: -1000
-            }).addTo(map);
-
-            return shipPolygon;
+            return L.polygon(shipCoords.map(p => [p.lat, p.lng]), { color, fillColor: color, fillOpacity: 0.5, weight: 1, interactive: false, zIndexOffset: -1000 }).addTo(map);
         });
         layersRef.current.push(...shipPolygons);
     }
-  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId]);
+  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId, animationState]);
   
-  // Auto-zoom to fit waypoints when a plan is imported
   useEffect(() => {
-    if (zoomToFitTrigger === 0 || !mapRef.current || waypoints.length === 0) {
-      return;
-    }
-
+    if (zoomToFitTrigger === 0 || !mapRef.current || waypoints.length === 0) return;
     const bounds = L.latLngBounds(waypoints.map(wp => [wp.lat, wp.lng]));
     mapRef.current.fitBounds(bounds, { padding: [50, 50] });
-    
-  }, [zoomToFitTrigger]);
+  }, [zoomToFitTrigger, waypoints.length]);
 
-  return (
-    <div ref={mapContainerRef} className="w-full h-full" />
-  );
+  return <div ref={mapContainerRef} className="w-full h-full" />;
 };
 
 export default PlanningCanvas;

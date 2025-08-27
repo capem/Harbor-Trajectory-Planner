@@ -41,3 +41,8 @@ export interface SavedPlan {
   waypoints: Waypoint[];
   ship: Ship;
 }
+
+export interface AnimationState {
+  position: GeoPoint;
+  heading: number;
+}

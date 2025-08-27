@@ -42,21 +42,48 @@ function getBearing(p1: GeoPoint, p2: GeoPoint): number {
 }
 // --- END GEO HELPERS ---
 
-// Helper function for Catmull-Rom spline interpolation (alpha = 0.5)
-function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): number {
+// --- SPLINE HELPER FUNCTIONS ---
+function catmullRomSpline(t: number, p0: number, p1: number, p2: number, p3: number): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
   return 0.5 * (
     (2 * p1) +
     (-p0 + p2) * t +
-    (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
-    (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t
+    (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+    (-p0 + 3 * p1 - 3 * p2 + p3) * t3
   );
 }
 
-function getPointOnCatmullRom(t: number, p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPoint): GeoPoint {
-  const lat = catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat);
-  const lng = catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng);
+function catmullRomSplineDerivative(t: number, p0: number, p1: number, p2: number, p3: number): number {
+    const t2 = t * t;
+    return 0.5 * (
+        (-p0 + p2) +
+        2 * (2 * p0 - 5 * p1 + 4 * p2 - p3) * t +
+        3 * (-p0 + 3 * p1 - 3 * p2 + p3) * t2
+    );
+}
+
+export function getPointOnCatmullRom(t: number, p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPoint): GeoPoint {
+  const lat = catmullRomSpline(t, p0.lat, p1.lat, p2.lat, p3.lat);
+  const lng = catmullRomSpline(t, p0.lng, p1.lng, p2.lng, p3.lng);
   return { lat, lng };
 }
+
+export function getHeadingOnCatmullRom(t: number, p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPoint): number {
+    const currentPoint = getPointOnCatmullRom(t, p0, p1, p2, p3);
+    const dLat = catmullRomSplineDerivative(t, p0.lat, p1.lat, p2.lat, p3.lat);
+    const dLng = catmullRomSplineDerivative(t, p0.lng, p1.lng, p2.lng, p3.lng);
+
+    const metersPerDegLat = 111132.954;
+    const metersPerDegLng = 111320 * Math.cos(toRad(currentPoint.lat));
+    
+    const dy_m = dLat * metersPerDegLat;
+    const dx_m = dLng * metersPerDegLng;
+
+    const angleRad = Math.atan2(dx_m, dy_m);
+    return (angleRad * 180 / Math.PI + 360) % 360;
+}
+// --- END SPLINE HELPERS ---
 
 function calculateCurveLength(p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPoint, segments: number = 20): number {
   let length = 0;

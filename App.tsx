@@ -1,9 +1,9 @@
-import React, { useState, useCallback } from 'react';
-import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan } from './types';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AnimationState, NavigationCommand } from './types';
 import Controls from './components/Controls';
 import PlanningCanvas from './components/PlanningCanvas';
 import TrajectoryInfo from './components/TrajectoryInfo';
-import { useTrajectoryCalculations } from './hooks/useTrajectoryCalculations';
+import { useTrajectoryCalculations, getPointOnCatmullRom, getHeadingOnCatmullRom } from './hooks/useTrajectoryCalculations';
 import { GithubIcon, ChevronDownIcon, SettingsIcon, ListIcon } from './components/Icons';
 
 const AccordionSection: React.FC<{ title: string; icon: React.ReactNode; isOpen: boolean; onToggle: () => void; children: React.ReactNode; className?: string; }> = ({ title, icon, isOpen, onToggle, children, className = '' }) => (
@@ -40,8 +40,85 @@ const App: React.FC = () => {
   });
   const [hoveredLegId, setHoveredLegId] = useState<number | null>(null);
 
+  // Animation State
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [animationState, setAnimationState] = useState<AnimationState | null>(null);
+
+  const animationFrameId = useRef<number | null>(null);
+  
   const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship);
 
+  const calculateAnimationState = useCallback((progress: number, totalDuration: number) => {
+      const currentTime = progress * totalDuration;
+      let accumulatedTime = 0;
+
+      for (let i = 0; i < trajectoryLegs.length; i++) {
+          const leg = trajectoryLegs[i];
+          if (leg.command === NavigationCommand.END) continue;
+
+          if (currentTime <= accumulatedTime + leg.time || i === trajectoryLegs.length - 2 /* Last actual leg */) {
+              const legProgress = leg.time > 0 ? (currentTime - accumulatedTime) / leg.time : 1;
+              
+              const p0 = waypoints[i - 1] || waypoints[i];
+              const p1 = waypoints[i];
+              const p2 = waypoints[i + 1];
+              const p3 = waypoints[i + 2] || waypoints[i + 1];
+
+              const position = getPointOnCatmullRom(legProgress, p0, p1, p2, p3);
+              const heading = getHeadingOnCatmullRom(legProgress, p0, p1, p2, p3);
+              
+              return { position, heading };
+          }
+          accumulatedTime += leg.time;
+      }
+      // Fallback for the very end
+      const lastLeg = trajectoryLegs.find(l => l.command !== NavigationCommand.END);
+      if (lastLeg) {
+          return { position: lastLeg.end, heading: lastLeg.heading };
+      }
+      return null;
+  }, [trajectoryLegs, waypoints]);
+
+  const handleAnimateToggle = useCallback(() => {
+    if (isAnimating) {
+        if (animationFrameId.current) {
+            cancelAnimationFrame(animationFrameId.current);
+        }
+        setIsAnimating(false);
+        setAnimationState(null);
+    } else {
+        const totalDuration = trajectoryLegs.reduce((sum, leg) => sum + leg.time, 0);
+        if (totalDuration === 0) return;
+
+        // Scale duration for better viewing, e.g., max 15 seconds
+        const playbackSpeed = Math.max(1, totalDuration / 15);
+        
+        let startTime: number | null = null;
+        setIsAnimating(true);
+        
+        const animate = (timestamp: number) => {
+            if (!startTime) startTime = timestamp;
+            const elapsed = (timestamp - startTime) / 1000; // in seconds
+            
+            const scaledElapsed = elapsed * playbackSpeed;
+            const progress = Math.min(scaledElapsed / totalDuration, 1);
+            
+            const newState = calculateAnimationState(progress, totalDuration);
+            if(newState) {
+                setAnimationState(newState);
+            }
+
+            if (progress < 1) {
+                animationFrameId.current = requestAnimationFrame(animate);
+            } else {
+                setIsAnimating(false);
+                setTimeout(() => setAnimationState(null), 1000);
+            }
+        };
+        animationFrameId.current = requestAnimationFrame(animate);
+    }
+  }, [isAnimating, trajectoryLegs, calculateAnimationState]);
+  
   const handleAddWaypoint = useCallback((point: GeoPoint) => {
     const newWaypoint: Waypoint = {
       ...point,
@@ -153,6 +230,9 @@ const App: React.FC = () => {
               onToggleMeasure={handleToggleMeasure}
               isPlotting={isPlotting}
               onTogglePlotting={handleTogglePlotting}
+              onAnimateToggle={handleAnimateToggle}
+              isAnimating={isAnimating}
+              hasPlan={waypoints.length > 1}
             />
           </AccordionSection>
           <div className="flex-1 flex flex-col min-h-0">
@@ -179,6 +259,7 @@ const App: React.FC = () => {
             isMeasuring={isMeasuring}
             isPlotting={isPlotting}
             hoveredLegId={hoveredLegId}
+            animationState={animationState}
           />
         </main>
       </div>
