@@ -45,29 +45,42 @@ function destinationPoint(point: GeoPoint, distance: number, bearing: number): G
 }
 
 /**
- * Calculates the geographic coordinates of a rectangular ship polygon.
+ * Calculates the geographic coordinates of a ship polygon with a realistic shape.
  * @param center - The center point of the ship { lat, lng }.
  * @param length - The ship's length in meters.
  * @param beam - The ship's beam (width) in meters.
  * @param bearing - The ship's bearing (heading) in degrees.
- * @returns An array of GeoPoints representing the four corners of the ship.
+ * @returns An array of GeoPoints representing the ship's hull.
  */
 function getShipPolygonCoords(center: GeoPoint, length: number, beam: number, bearing: number): GeoPoint[] {
-    const halfLength = length / 2;
-    const halfBeam = beam / 2;
+    const l = length / 2;
+    const b = beam / 2;
 
-    // Define corners in a local coordinate system (x: starboard, y: bow)
-    const corners = [
-        { x: halfBeam, y: halfLength },   // Bow-starboard
-        { x: -halfBeam, y: halfLength },  // Bow-port
-        { x: -halfBeam, y: -halfLength }, // Stern-port
-        { x: halfBeam, y: -halfLength }   // Stern-starboard
+    // The bow curve starts at 50% of the length from the center.
+    const bowShoulderY = l * 0.5;
+
+    // Define the ship's hull points in a local coordinate system (y: bow, x: starboard)
+    // Ordered for drawing a polygon.
+    const hullPoints = [
+        { x: -b, y: -l },                  // 1. Stern-port
+        { x: b, y: -l },                   // 2. Stern-starboard
+        { x: b, y: bowShoulderY },         // 3. Bow-shoulder-starboard
+        { x: b * 0.5, y: l * 0.9 },        // 4. Bow-curve-point-starboard (for rounded shape)
+        { x: 0, y: l },                    // 5. Bow tip
+        { x: -b * 0.5, y: l * 0.9 },       // 6. Bow-curve-point-port (for rounded shape)
+        { x: -b, y: bowShoulderY },         // 7. Bow-shoulder-port
     ];
 
-    return corners.map(corner => {
-        const distance = Math.sqrt(corner.x * corner.x + corner.y * corner.y);
-        const angle = toDeg(Math.atan2(corner.x, corner.y));
+    // Convert local hull points to geographic coordinates
+    return hullPoints.map(point => {
+        // Calculate distance and angle from the center to the point
+        const distance = Math.sqrt(point.x * point.x + point.y * point.y);
+        const angle = toDeg(Math.atan2(point.x, point.y));
+        
+        // Adjust the angle by the ship's bearing
         const finalBearing = bearing + angle;
+        
+        // Calculate the geographic coordinate of the point
         return destinationPoint(center, distance, finalBearing);
     });
 }
@@ -163,7 +176,6 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
           });
 
           // Generate 15 points for each segment for a smooth curve
-          // FIX: The `d3-shape` package does not include `d3.range`. Replaced with a native JS equivalent.
           return Array.from({ length: 15 }, (_, i) => i / 15).map(interpolator);
       });
       interpolatedPoints.push(waypoints[waypoints.length-1]);
