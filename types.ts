@@ -27,7 +27,8 @@ export interface TrajectoryLeg {
   end: Waypoint;
   distance: number; // Straight line distance
   curveDistance: number;
-  bearing: number;
+  course: number; // Straight-line bearing between waypoints
+  heading: number; // Tangential bearing for ship orientation
   command: NavigationCommand;
   turnAngle: number;
   turnRadiusViolation?: boolean;

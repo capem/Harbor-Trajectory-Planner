@@ -25,6 +25,9 @@ function getDistance(p1: GeoPoint, p2: GeoPoint): number {
 }
 
 function getBearing(p1: GeoPoint, p2: GeoPoint): number {
+  if (p1.lat === p2.lat && p1.lng === p2.lng) {
+    return 0; // Or handle as an edge case, e.g., return previous bearing
+  }
   const lat1 = toRad(p1.lat);
   const lng1 = toRad(p1.lng);
   const lat2 = toRad(p2.lat);
@@ -83,8 +86,10 @@ function calculateTurnRadius(p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPo
     const metersPerDegLng = 111320 * Math.cos(toRad(p1.lat));
     
     const x_prime = lng_prime * metersPerDegLng;
+    // FIX: Cannot find name 'metersPerLat'. Did you mean 'metersPerDegLat'?
     const y_prime = lat_prime * metersPerDegLat;
     const x_double_prime = lng_double_prime * metersPerDegLng;
+    // FIX: Cannot find name 'metersPerLat'. Did you mean 'metersPerDegLat'?
     const y_double_prime = lat_double_prime * metersPerDegLat;
     
     const numerator = Math.pow(x_prime * x_prime + y_prime * y_prime, 1.5);
@@ -105,15 +110,15 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
     }
 
     const trajectoryLegs: TrajectoryLeg[] = [];
-    let previousStraightBearing: number | null = null;
+    let previousCourse: number | null = null;
 
     for (let i = 0; i < waypoints.length - 1; i++) {
       const start = waypoints[i];
       const end = waypoints[i + 1];
 
-      // --- Straight Leg Properties (for turning logic) ---
-      const straightDistance = getDistance(start, end);
-      const straightBearing = getBearing(start, end);
+      // --- Course (Straight Leg Properties) ---
+      const distance = getDistance(start, end);
+      const course = getBearing(start, end);
 
       // --- Curve Properties ---
       const p0 = waypoints[i - 1] || start;
@@ -122,9 +127,9 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
       const p3 = waypoints[i + 2] || end;
       const curveDistance = calculateCurveLength(p0, p1, p2, p3);
 
-      // --- Tangential Bearing (for ship orientation) ---
+      // --- Heading (Tangential Bearing for ship orientation) ---
       // The tangent at `start` (p1) is parallel to the vector from p0 to p2.
-      const tangentialBearing = getBearing(p0, p2);
+      const heading = getBearing(p0, p2);
 
       // --- Command, Turn Angle, and Violation ---
       let command: NavigationCommand;
@@ -133,10 +138,10 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
       if (i === 0) {
         command = NavigationCommand.START;
       } else {
-        const bearingIn = previousStraightBearing!;
-        const bearingOut = straightBearing;
+        const courseIn = previousCourse!;
+        const courseOut = course;
 
-        let angle = bearingOut - bearingIn;
+        let angle = courseOut - courseIn;
         if (angle > 180) angle -= 360;
         if (angle < -180) angle += 360;
         turnAngle = angle;
@@ -162,25 +167,25 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
         id: start.id,
         start,
         end,
-        distance: straightDistance,
+        distance: distance,
         curveDistance,
-        bearing: tangentialBearing, // Use tangential bearing for visualization
+        course: course,
+        heading: heading,
         command,
         turnAngle,
         turnRadiusViolation,
       });
 
-      previousStraightBearing = straightBearing;
+      previousCourse = course;
     }
 
     // Add a final entry for the end of the plan.
     if (waypoints.length > 0) {
       const lastWaypoint = waypoints[waypoints.length - 1];
-      const previousWaypoint = waypoints[waypoints.length - 2] || lastWaypoint;
+      const previousWaypoint = waypoints.length > 1 ? waypoints[waypoints.length - 2] : null;
       
-      // The tangent at the last waypoint is parallel to the vector from the second-to-last to the last waypoint.
-      // This provides a natural continuation of the final approach.
-      const finalTangentialBearing = getBearing(previousWaypoint, lastWaypoint);
+      // At the final point, the heading should align with the course of the final approach.
+      const finalCourseAndHeading = previousWaypoint ? getBearing(previousWaypoint, lastWaypoint) : 0;
 
       trajectoryLegs.push({
         id: lastWaypoint.id,
@@ -188,7 +193,8 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
         end: lastWaypoint,
         distance: 0,
         curveDistance: 0,
-        bearing: finalTangentialBearing,
+        course: finalCourseAndHeading,
+        heading: finalCourseAndHeading,
         command: NavigationCommand.END,
         turnAngle: 0,
         turnRadiusViolation: false,

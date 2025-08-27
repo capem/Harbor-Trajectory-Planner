@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { TrajectoryLeg, NavigationCommand } from '../types';
 import { PortIcon, StarboardIcon, StraightIcon, StartIcon, EndIcon, TrashIcon, WarningIcon } from './Icons';
@@ -77,8 +76,12 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint 
                             <span className="font-mono text-gray-200">{leg.curveDistance.toFixed(1)} m</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span>Bearing</span>
-                            <span className="font-mono text-gray-200">{leg.bearing.toFixed(1)}°</span>
+                            <span>Course (Bearing)</span>
+                            <span className="font-mono text-gray-200">{leg.course.toFixed(1)}°</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span>Initial Heading</span>
+                            <span className="font-mono text-gray-200">{leg.heading.toFixed(1)}°</span>
                         </div>
                     </div>
                   )}

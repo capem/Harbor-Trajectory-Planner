@@ -1,5 +1,3 @@
-
-
 import React, { useRef, useEffect } from 'react';
 import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand } from '../types';
 
@@ -82,10 +80,10 @@ function destinationPoint(point: GeoPoint, distance: number, bearing: number): G
  * @param center - The center point of the ship { lat, lng }.
  * @param length - The ship's length in meters.
  * @param beam - The ship's beam (width) in meters.
- * @param bearing - The ship's bearing (heading) in degrees.
+ * @param heading - The ship's heading in degrees.
  * @returns An array of GeoPoints representing the ship's hull.
  */
-function getShipPolygonCoords(center: GeoPoint, length: number, beam: number, bearing: number): GeoPoint[] {
+function getShipPolygonCoords(center: GeoPoint, length: number, beam: number, heading: number): GeoPoint[] {
     const l = length / 2;
     const b = beam / 2;
 
@@ -111,7 +109,7 @@ function getShipPolygonCoords(center: GeoPoint, length: number, beam: number, be
         const angle = toDeg(Math.atan2(point.x, point.y));
         
         // Adjust the angle by the ship's bearing
-        const finalBearing = bearing + angle;
+        const finalBearing = heading + angle;
         
         // Calculate the geographic coordinate of the point
         return destinationPoint(center, distance, finalBearing);
@@ -241,7 +239,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
                 const tooltipContent = `
                   <div class="text-left">
                     <div><strong>Distance:</strong> ${distance.toFixed(1)} m</div>
-                    <div><strong>Bearing:</strong> ${bearing.toFixed(1)}°</div>
+                    <div><strong>Course:</strong> ${bearing.toFixed(1)}°</div>
                   </div>
                 `;
 
@@ -323,7 +321,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
     layersRef.current.push(...waypointMarkers);
 
     if (waypoints.length > 1) {
-      // Smooth Trajectory (Catmull-Rom)
+      // Smooth Trajectory (Catmull-Rom) - The actual path
       const interpolatedPoints = waypoints.slice(0, -1).flatMap((wp, i) => {
           const p0 = waypoints[i - 1] || waypoints[i];
           const p1 = waypoints[i];
@@ -342,9 +340,9 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
       const smoothPath = L.polyline(interpolatedPoints.map(p => [p.lat, p.lng]), { color: 'rgba(255, 255, 255, 0.7)', weight: 3, dashArray: '10, 10', interactive: false }).addTo(map);
       layersRef.current.push(smoothPath);
       
-      // Straight Path
-      const straightPath = L.polyline(waypoints.map(wp => [wp.lat, wp.lng]), { color: 'rgba(56, 189, 248, 0.7)', weight: 2, interactive: false }).addTo(map);
-      layersRef.current.push(straightPath);
+      // Course Line (Bearing) - The intended straight path
+      const coursePath = L.polyline(waypoints.map(wp => [wp.lat, wp.lng]), { color: 'rgba(156, 163, 175, 0.6)', weight: 2, dashArray: '5, 5', interactive: false }).addTo(map);
+      layersRef.current.push(coursePath);
     }
     
     // Ship Polygons
@@ -363,7 +361,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
                 break;
             }
 
-            const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, leg.bearing);
+            const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, leg.heading);
             
             const shipPolygon = L.polygon(shipCoords.map(p => [p.lat, p.lng]), {
                 color: color,
