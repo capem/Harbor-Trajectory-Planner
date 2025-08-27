@@ -140,7 +140,8 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
   // Effect to handle mode switching (waypoint plotting vs. measuring)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    const mapContainer = mapContainerRef.current;
+    if (!map || !mapContainer) return;
 
     // --- Always clean up previous listeners before setting new ones ---
     map.off('click');
@@ -160,7 +161,9 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
     }
     
     if (isMeasuring) {
-        if(mapContainerRef.current) mapContainerRef.current.style.cursor = 'cell';
+        map.dragging.disable();
+        mapContainer.classList.remove('plotting-mode');
+        mapContainer.classList.add('measuring-active');
 
         const handleMeasureClick = (e: any) => {
             if (measureStartPointRef.current) { // This is the second click
@@ -177,7 +180,8 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
                 measureLineRef.current = L.polyline([e.latlng, e.latlng], {
                     color: '#FBBF24', // amber-400
                     weight: 3,
-                    dashArray: '5, 10'
+                    dashArray: '5, 10',
+                    interactive: false, // Make the measurement line non-interactive
                 }).addTo(map);
 
                 measureTooltipRef.current = L.tooltip({
@@ -201,8 +205,10 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
 
         map.on('click', handleMeasureClick);
     } else {
+        map.dragging.enable();
         cleanupLayers();
-        if(mapContainerRef.current) mapContainerRef.current.style.cursor = 'crosshair';
+        mapContainer.classList.remove('measuring-active');
+        mapContainer.classList.add('plotting-mode');
         // Set back to adding waypoints
         map.on('click', (e: any) => {
             onAddWaypoint({ lat: e.latlng.lat, lng: e.latlng.lng });
@@ -211,6 +217,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
 
     return () => { // Cleanup when component unmounts
         if (map) {
+            map.dragging.enable();
             map.off('click');
             map.off('mousemove');
             cleanupLayers();
@@ -218,7 +225,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
     };
   }, [isMeasuring, onAddWaypoint]);
 
-  // Update map layers when waypoints change
+  // Update map layers when waypoints or measuring state change
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -233,7 +240,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
       const isViolation = leg?.turnRadiusViolation;
       
       const iconHtml = `
-        <div class="relative flex items-center justify-center cursor-grab">
+        <div class="relative flex items-center justify-center">
           ${isViolation ? '<div class="absolute w-8 h-8 rounded-full border-2 border-red-500 animate-ping opacity-75"></div>' : ''}
           <div class="absolute w-6 h-6 rounded-full bg-sky-500 border-2 border-white shadow-lg"></div>
           <div class="absolute -top-6 text-center text-white font-bold text-sm" style="text-shadow: 0 0 4px black, 0 0 4px black;">WP${index + 1}</div>
@@ -241,7 +248,8 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
       `;
       
       const marker = L.marker([wp.lat, wp.lng], {
-        draggable: true,
+        draggable: !isMeasuring,
+        interactive: !isMeasuring, // This is the key change to prevent hover cursors
         icon: L.divIcon({
           className: 'waypoint-marker',
           html: iconHtml,
@@ -250,19 +258,26 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
         })
       }).addTo(map);
 
-      marker.on('dragend', (e: any) => {
-        onUpdateWaypoint(wp.id, e.target.getLatLng());
-      });
+      // Only attach event listeners if the marker is interactive
+      if (!isMeasuring) {
+        marker.on('dragend', (e: any) => {
+          onUpdateWaypoint(wp.id, e.target.getLatLng());
+        });
 
-      marker.on('contextmenu', () => {
-        onDeleteWaypoint(wp.id);
-      });
+        marker.on('contextmenu', () => {
+          onDeleteWaypoint(wp.id);
+        });
+      }
       
       return marker;
     });
     layersRef.current.push(...waypointMarkers);
 
     if (waypoints.length > 1) {
+      const pathOptions = {
+        interactive: !isMeasuring, // Make paths non-interactive during measurement
+      };
+
       // Smooth Trajectory (Catmull-Rom)
       const interpolatedPoints = waypoints.slice(0, -1).flatMap((wp, i) => {
           const p0 = waypoints[i - 1] || waypoints[i];
@@ -280,11 +295,11 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
       });
       interpolatedPoints.push(waypoints[waypoints.length-1]);
 
-      const smoothPath = L.polyline(interpolatedPoints.map(p => [p.lat, p.lng]), { color: 'rgba(255, 255, 255, 0.7)', weight: 3, dashArray: '10, 10' }).addTo(map);
+      const smoothPath = L.polyline(interpolatedPoints.map(p => [p.lat, p.lng]), { color: 'rgba(255, 255, 255, 0.7)', weight: 3, dashArray: '10, 10', ...pathOptions }).addTo(map);
       layersRef.current.push(smoothPath);
       
       // Straight Path
-      const straightPath = L.polyline(waypoints.map(wp => [wp.lat, wp.lng]), { color: 'rgba(56, 189, 248, 0.7)', weight: 2 }).addTo(map);
+      const straightPath = L.polyline(waypoints.map(wp => [wp.lat, wp.lng]), { color: 'rgba(56, 189, 248, 0.7)', weight: 2, ...pathOptions }).addTo(map);
       layersRef.current.push(straightPath);
     }
     
@@ -319,7 +334,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
         });
         layersRef.current.push(...shipPolygons);
     }
-  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint]);
+  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring]);
   
   // Auto-zoom to fit waypoints when a plan is imported
   useEffect(() => {
