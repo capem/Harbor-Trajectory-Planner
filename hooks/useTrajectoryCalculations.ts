@@ -1,3 +1,4 @@
+
 import { useMemo } from 'react';
 import { Waypoint, TrajectoryLeg, NavigationCommand, GeoPoint, Ship } from '../types';
 
@@ -86,10 +87,8 @@ function calculateTurnRadius(p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPo
     const metersPerDegLng = 111320 * Math.cos(toRad(p1.lat));
     
     const x_prime = lng_prime * metersPerDegLng;
-    // FIX: Cannot find name 'metersPerLat'. Did you mean 'metersPerDegLat'?
     const y_prime = lat_prime * metersPerDegLat;
     const x_double_prime = lng_double_prime * metersPerDegLng;
-    // FIX: Cannot find name 'metersPerLat'. Did you mean 'metersPerDegLat'?
     const y_double_prime = lat_double_prime * metersPerDegLat;
     
     const numerator = Math.pow(x_prime * x_prime + y_prime * y_prime, 1.5);

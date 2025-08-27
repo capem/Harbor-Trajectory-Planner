@@ -5,6 +5,7 @@ import { PortIcon, StarboardIcon, StraightIcon, StartIcon, EndIcon, TrashIcon, W
 interface TrajectoryInfoProps {
   legs: TrajectoryLeg[];
   onDeleteWaypoint: (id: number) => void;
+  onLegHover: (id: number | null) => void;
 }
 
 const CommandDisplay: React.FC<{ command: NavigationCommand; angle: number; violation: boolean; }> = ({ command, angle, violation }) => {
@@ -37,68 +38,67 @@ const CommandDisplay: React.FC<{ command: NavigationCommand; angle: number; viol
 };
 
 
-const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint }) => {
+const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint, onLegHover }) => {
   const actualLegs = legs.filter(leg => leg.command !== NavigationCommand.END);
   const totalLineDistance = actualLegs.reduce((sum, leg) => sum + leg.distance, 0);
   const totalCurveDistance = actualLegs.reduce((sum, leg) => sum + leg.curveDistance, 0);
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-900 rounded-lg p-4 min-h-0">
-      <h2 className="text-lg font-semibold text-cyan-400 border-b border-gray-700 pb-2 mb-4">Trajectory Plan</h2>
-      <div className="flex-1 overflow-y-auto pr-2">
-        {legs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            <p>Click on the map to add waypoints.</p>
-          </div>
-        ) : (
-          <ul className="space-y-3">
-            {legs.map((leg, index) => (
-              <li 
-                key={leg.id} 
-                className={`bg-gray-800 p-3 rounded-md border-l-4 flex justify-between items-start group ${leg.turnRadiusViolation ? 'border-l-red-500' : 'border-l-gray-700'}`}
-                title={leg.turnRadiusViolation ? 'Warning: Turn is too sharp for the ship\'s minimum turning radius.' : ''}
-              >
-                <div className="flex-grow">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-white">
-                      {leg.command === NavigationCommand.END ? `Waypoint ${index + 1}` : `Leg ${index + 1}`}
-                    </span>
-                    <CommandDisplay command={leg.command} angle={leg.turnAngle} violation={!!leg.turnRadiusViolation} />
-                  </div>
-                  {leg.command !== NavigationCommand.END && (
-                     <div className="mt-2 pt-2 border-t border-gray-700/50 space-y-1 text-sm text-gray-400">
-                        <div className="flex justify-between items-center">
-                            <span>Line Distance</span>
-                            <span className="font-mono text-gray-200">{leg.distance.toFixed(1)} m</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span>Curve Distance</span>
-                            <span className="font-mono text-gray-200">{leg.curveDistance.toFixed(1)} m</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span>Course (Bearing)</span>
-                            <span className="font-mono text-gray-200">{leg.course.toFixed(1)}°</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span>Initial Heading</span>
-                            <span className="font-mono text-gray-200">{leg.heading.toFixed(1)}°</span>
-                        </div>
-                    </div>
-                  )}
+    <div className="flex flex-col">
+      {legs.length === 0 ? (
+        <div className="flex items-center justify-center h-full text-gray-500 py-10">
+          <p>Click "Plot Waypoints" to start.</p>
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {legs.map((leg, index) => (
+            <li
+              key={leg.id}
+              onMouseEnter={() => onLegHover(leg.id)}
+              onMouseLeave={() => onLegHover(null)}
+              className={`bg-gray-800 p-3 rounded-md border-l-4 flex justify-between items-start group transition-colors hover:bg-gray-700/80 ${leg.turnRadiusViolation ? 'border-l-red-500' : 'border-l-gray-700'}`}
+              title={leg.turnRadiusViolation ? 'Warning: Turn is too sharp for the ship\'s minimum turning radius.' : ''}
+            >
+              <div className="flex-grow">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-white">
+                    {leg.command === NavigationCommand.END ? `Waypoint ${index + 1}` : `Leg ${index + 1}`}
+                  </span>
+                  <CommandDisplay command={leg.command} angle={leg.turnAngle} violation={!!leg.turnRadiusViolation} />
                 </div>
-                 <button
-                    onClick={() => onDeleteWaypoint(leg.id)}
-                    className="ml-4 flex-shrink-0 p-2 text-gray-500 hover:text-red-500 hover:bg-gray-700 rounded-full transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                    aria-label={`Delete Waypoint ${index + 1}`}
-                    title={`Delete Waypoint ${index + 1}`}
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+                {leg.command !== NavigationCommand.END && (
+                   <div className="mt-2 pt-2 border-t border-gray-700/50 space-y-1 text-sm text-gray-400">
+                      <div className="flex justify-between items-center">
+                          <span>Line Distance</span>
+                          <span className="font-mono text-gray-200">{leg.distance.toFixed(1)} m</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                          <span>Curve Distance</span>
+                          <span className="font-mono text-gray-200">{leg.curveDistance.toFixed(1)} m</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                          <span>Course (Bearing)</span>
+                          <span className="font-mono text-gray-200">{leg.course.toFixed(1)}°</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                          <span>Initial Heading</span>
+                          <span className="font-mono text-gray-200">{leg.heading.toFixed(1)}°</span>
+                      </div>
+                  </div>
+                )}
+              </div>
+               <button
+                  onClick={() => onDeleteWaypoint(leg.id)}
+                  className="ml-4 flex-shrink-0 p-2 text-gray-500 hover:text-red-500 hover:bg-gray-700 rounded-full transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                  aria-label={`Delete Waypoint ${index + 1}`}
+                  title={`Delete Waypoint ${index + 1}`}
+                >
+                  <TrashIcon className="w-5 h-5" />
+                </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {legs.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-700">
           <h3 className="text-md font-semibold text-cyan-400 mb-2">Total Distances</h3>

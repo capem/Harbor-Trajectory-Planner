@@ -4,7 +4,29 @@ import Controls from './components/Controls';
 import PlanningCanvas from './components/PlanningCanvas';
 import TrajectoryInfo from './components/TrajectoryInfo';
 import { useTrajectoryCalculations } from './hooks/useTrajectoryCalculations';
-import { GithubIcon } from './components/Icons';
+import { GithubIcon, ChevronDownIcon, SettingsIcon, ListIcon } from './components/Icons';
+
+const AccordionSection: React.FC<{ title: string; icon: React.ReactNode; isOpen: boolean; onToggle: () => void; children: React.ReactNode; className?: string; }> = ({ title, icon, isOpen, onToggle, children, className = '' }) => (
+    // This is now a flex container that can fill height
+    <div className={`bg-gray-900/70 rounded-lg overflow-hidden border border-gray-700/50 flex flex-col ${className}`}>
+      <button onClick={onToggle} className="w-full flex justify-between items-center p-4 bg-gray-800/50 hover:bg-gray-700/50 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 flex-shrink-0">
+        <div className="flex items-center space-x-3">
+          {icon}
+          <h2 className="text-md font-semibold text-cyan-400">{title}</h2>
+        </div>
+        <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {/* This div will grow and handles the animation using grid-template-rows */}
+      <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'} flex-1 min-h-0`}>
+        <div className="overflow-y-auto"> {/* This inner div provides the scrolling */}
+          <div className="p-4 border-t border-gray-700/50">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+);
+
 
 const App: React.FC = () => {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
@@ -12,6 +34,11 @@ const App: React.FC = () => {
   const [zoomToFitTrigger, setZoomToFitTrigger] = useState(0);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [isPlotting, setIsPlotting] = useState(false);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    controls: true,
+    plan: true,
+  });
+  const [hoveredLegId, setHoveredLegId] = useState<number | null>(null);
 
   const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship);
 
@@ -62,9 +89,8 @@ const App: React.FC = () => {
 
         if (plan.waypoints && plan.ship) {
           setWaypoints(plan.waypoints);
-          // Provide default turningRadius if not in imported file for backward compatibility
           setShip({ turningRadius: 300, ...plan.ship });
-          setZoomToFitTrigger(c => c + 1); // Trigger auto-zoom
+          setZoomToFitTrigger(c => c + 1);
           setIsPlotting(false);
           setIsMeasuring(false);
         } else {
@@ -79,45 +105,60 @@ const App: React.FC = () => {
   }, []);
 
   const handleToggleMeasure = useCallback(() => {
-    // If we are about to turn measuring ON, make sure plotting is OFF.
-    if (!isMeasuring) {
-      setIsPlotting(false);
-    }
+    if (!isMeasuring) setIsPlotting(false);
     setIsMeasuring(prev => !prev);
   }, [isMeasuring]);
 
   const handleTogglePlotting = useCallback(() => {
-    // If we are about to turn plotting ON, make sure measuring is OFF.
-    if (!isPlotting) {
-      setIsMeasuring(false);
-    }
+    if (!isPlotting) setIsMeasuring(false);
     setIsPlotting(prev => !prev);
   }, [isPlotting]);
+  
+  const toggleSection = (section: string) => {
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-200 font-sans">
       <header className="bg-gray-800 shadow-lg z-10 p-2">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-xl font-bold text-cyan-400">Harbor Ship Trajectory Planner</h1>
-          <a href="https://github.com/your-repo" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">
+          <a href="https://github.com/google/aistudio-apps" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">
             <GithubIcon className="w-6 h-6" />
           </a>
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-1/4 min-w-[350px] max-w-[450px] bg-gray-800 p-4 flex flex-col space-y-4">
-          <Controls 
-            ship={ship}
-            setShip={setShip}
-            onClear={handleClear}
-            onImportPlan={handleImportPlan}
-            onExportPlan={handleExportPlan}
-            isMeasuring={isMeasuring}
-            onToggleMeasure={handleToggleMeasure}
-            isPlotting={isPlotting}
-            onTogglePlotting={handleTogglePlotting}
-          />
-          <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} />
+          <AccordionSection
+              title="Settings & Actions"
+              icon={<SettingsIcon className="w-5 h-5 text-cyan-400" />}
+              isOpen={openSections.controls}
+              onToggle={() => toggleSection('controls')}
+          >
+            <Controls 
+              ship={ship}
+              setShip={setShip}
+              onClear={handleClear}
+              onImportPlan={handleImportPlan}
+              onExportPlan={handleExportPlan}
+              isMeasuring={isMeasuring}
+              onToggleMeasure={handleToggleMeasure}
+              isPlotting={isPlotting}
+              onTogglePlotting={handleTogglePlotting}
+            />
+          </AccordionSection>
+          <div className="flex-1 flex flex-col min-h-0">
+            <AccordionSection
+                className="h-full"
+                title="Trajectory Plan"
+                icon={<ListIcon className="w-5 h-5 text-cyan-400" />}
+                isOpen={openSections.plan}
+                onToggle={() => toggleSection('plan')}
+            >
+              <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} onLegHover={setHoveredLegId} />
+            </AccordionSection>
+          </div>
         </aside>
         <main className="flex-1 bg-gray-700 relative">
           <PlanningCanvas
@@ -130,6 +171,7 @@ const App: React.FC = () => {
             zoomToFitTrigger={zoomToFitTrigger}
             isMeasuring={isMeasuring}
             isPlotting={isPlotting}
+            hoveredLegId={hoveredLegId}
           />
         </main>
       </div>

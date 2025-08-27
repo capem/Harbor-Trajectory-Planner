@@ -56,10 +56,10 @@ const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPla
   }, []);
 
   return (
-    <div className="space-y-4">
-      <div className="p-3 bg-gray-900 rounded-lg">
-        <h2 className="text-md font-semibold text-cyan-400 border-b border-gray-700 pb-2 mb-3">Configuration</h2>
-        <div className="space-y-2">
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-300 border-b border-gray-700 pb-2 mb-4">Ship Configuration</h3>
+        <div className="space-y-3">
           <ControlInput
             label="Ship Length"
             value={ship.length}
@@ -81,8 +81,8 @@ const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPla
         </div>
       </div>
       
-      <div className="p-3 bg-gray-900 rounded-lg">
-         <h2 className="text-md font-semibold text-cyan-400 border-b border-gray-700 pb-2 mb-3">Actions</h2>
+      <div>
+         <h3 className="text-sm font-semibold text-gray-300 border-b border-gray-700 pb-2 mb-4">Plan Actions</h3>
          <input
             type="file"
             ref={planFileInputRef}

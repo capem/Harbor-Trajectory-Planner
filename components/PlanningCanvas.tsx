@@ -14,6 +14,7 @@ interface PlanningCanvasProps {
   zoomToFitTrigger: number;
   isMeasuring: boolean;
   isPlotting: boolean;
+  hoveredLegId?: number | null;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -127,7 +128,7 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
   );
 }
 
-const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, legs, zoomToFitTrigger, isMeasuring, isPlotting }) => {
+const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, legs, zoomToFitTrigger, isMeasuring, isPlotting, hoveredLegId }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
@@ -320,29 +321,53 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
     });
     layersRef.current.push(...waypointMarkers);
 
+    // Trajectory and Course Lines (drawn per segment for highlighting)
     if (waypoints.length > 1) {
-      // Smooth Trajectory (Catmull-Rom) - The actual path
-      const interpolatedPoints = waypoints.slice(0, -1).flatMap((wp, i) => {
-          const p0 = waypoints[i - 1] || waypoints[i];
-          const p1 = waypoints[i];
-          const p2 = waypoints[i + 1];
-          const p3 = waypoints[i + 2] || waypoints[i + 1];
-          
-          const interpolator = (t: number) => ({
-            lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat),
-            lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng),
-          });
+        waypoints.slice(0, -1).forEach((wp, i) => {
+            const leg = legs[i];
+            if (!leg) return;
 
-          return Array.from({ length: 15 }, (_, i) => i / 15).map(interpolator);
-      });
-      interpolatedPoints.push(waypoints[waypoints.length-1]);
+            const isHovered = leg.id === hoveredLegId;
 
-      const smoothPath = L.polyline(interpolatedPoints.map(p => [p.lat, p.lng]), { color: 'rgba(255, 255, 255, 0.7)', weight: 3, dashArray: '10, 10', interactive: false }).addTo(map);
-      layersRef.current.push(smoothPath);
-      
-      // Course Line (Bearing) - The intended straight path
-      const coursePath = L.polyline(waypoints.map(wp => [wp.lat, wp.lng]), { color: 'rgba(156, 163, 175, 0.6)', weight: 2, dashArray: '5, 5', interactive: false }).addTo(map);
-      layersRef.current.push(coursePath);
+            // --- Smooth Path Segment ---
+            const p0 = waypoints[i - 1] || waypoints[i];
+            const p1 = waypoints[i];
+            const p2 = waypoints[i + 1];
+            const p3 = waypoints[i + 2] || waypoints[i + 1];
+            
+            const interpolator = (t: number) => ({
+                lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat),
+                lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng),
+            });
+
+            const segmentPoints = Array.from({ length: 15 }, (_, i) => i / 15).map(interpolator);
+            segmentPoints.push(p2); // Ensure the segment connects perfectly to the next waypoint
+            
+            // Glow effect for hovered line
+            if (isHovered) {
+                const glowPath = L.polyline(segmentPoints.map(p => [p.lat, p.lng]), {
+                    color: '#06b6d4', weight: 10, opacity: 0.3, interactive: false,
+                }).addTo(map);
+                layersRef.current.push(glowPath);
+            }
+
+            const smoothPath = L.polyline(segmentPoints.map(p => [p.lat, p.lng]), {
+                color: isHovered ? '#67e8f9' : 'rgba(255, 255, 255, 0.7)',
+                weight: isHovered ? 4 : 3,
+                dashArray: '10, 10',
+                interactive: false
+            }).addTo(map);
+            layersRef.current.push(smoothPath);
+
+            // --- Course Line Segment ---
+            const coursePath = L.polyline([[leg.start.lat, leg.start.lng], [leg.end.lat, leg.end.lng]], {
+                color: isHovered ? '#0891b2' : 'rgba(107, 114, 128, 0.8)',
+                weight: isHovered ? 2 : 1,
+                dashArray: '2, 8',
+                interactive: false
+            }).addTo(map);
+            layersRef.current.push(coursePath);
+        });
     }
     
     // Ship Polygons
@@ -376,7 +401,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
         });
         layersRef.current.push(...shipPolygons);
     }
-  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting]);
+  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId]);
   
   // Auto-zoom to fit waypoints when a plan is imported
   useEffect(() => {
