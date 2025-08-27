@@ -1,5 +1,6 @@
+
 import React, { useRef, useEffect } from 'react';
-import { Waypoint, Ship, GeoPoint, TrajectoryLeg } from '../types';
+import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand } from '../types';
 
 // Since we don't have @types/leaflet installed from npm, we declare a global L
 declare const L: any;
@@ -188,10 +189,21 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
       const straightPath = L.polyline(waypoints.map(wp => [wp.lat, wp.lng]), { color: 'rgba(56, 189, 248, 0.7)', weight: 2 }).addTo(map);
       layersRef.current.push(straightPath);
       
-      // Ship Polygons (replaces Ship Icons)
-      const shipPolygons = legs.slice(0, -1).map((leg) => {
-        const color = leg.command === 'Start' ? '#10B981' : '#EF4444'; // green-500, red-500
-        
+      // Ship Polygons
+      const shipPolygons = legs.map((leg) => {
+        let color: string;
+        switch (leg.command) {
+          case NavigationCommand.START:
+            color = '#10B981'; // green-500
+            break;
+          case NavigationCommand.END:
+            color = '#FBBF24'; // yellow-400, consistent with info panel
+            break;
+          default:
+            color = '#3B82F6'; // blue-500 for intermediate points
+            break;
+        }
+
         const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, leg.bearing);
         
         const shipPolygon = L.polygon(shipCoords.map(p => [p.lat, p.lng]), {
