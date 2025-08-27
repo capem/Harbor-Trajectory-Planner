@@ -46,6 +46,7 @@ const App: React.FC = () => {
     const newWaypoint: Waypoint = {
       ...point,
       id: Date.now(),
+      speedToNext: 5.0, // Default speed in knots
     };
     setWaypoints(prev => [...prev, newWaypoint]);
   }, []);
@@ -58,6 +59,12 @@ const App: React.FC = () => {
 
   const handleDeleteWaypoint = useCallback((id: number) => {
     setWaypoints(prev => prev.filter(wp => wp.id !== id));
+  }, []);
+
+  const handleSpeedChange = useCallback((waypointId: number, speed: number) => {
+    setWaypoints(prev =>
+      prev.map(wp => (wp.id === waypointId ? { ...wp, speedToNext: speed } : wp))
+    );
   }, []);
 
   const handleClear = useCallback(() => {
@@ -156,7 +163,7 @@ const App: React.FC = () => {
                 isOpen={openSections.plan}
                 onToggle={() => toggleSection('plan')}
             >
-              <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} onLegHover={setHoveredLegId} />
+              <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} onLegHover={setHoveredLegId} onSpeedChange={handleSpeedChange} />
             </AccordionSection>
           </div>
         </aside>

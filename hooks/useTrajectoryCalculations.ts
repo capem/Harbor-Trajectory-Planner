@@ -1,4 +1,3 @@
-
 import { useMemo } from 'react';
 import { Waypoint, TrajectoryLeg, NavigationCommand, GeoPoint, Ship } from '../types';
 
@@ -126,6 +125,11 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
       const p3 = waypoints[i + 2] || end;
       const curveDistance = calculateCurveLength(p0, p1, p2, p3);
 
+      // --- Speed and Time ---
+      const speedKnots = start.speedToNext ?? 5.0; // Default to 5 knots if not set
+      const speedMps = speedKnots * 0.514444; // 1 knot = 0.514444 m/s
+      const timeSeconds = speedMps > 0 ? curveDistance / speedMps : 0;
+
       // --- Heading (Tangential Bearing for ship orientation) ---
       // The tangent at `start` (p1) is parallel to the vector from p0 to p2.
       const heading = getBearing(p0, p2);
@@ -173,6 +177,8 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
         command,
         turnAngle,
         turnRadiusViolation,
+        speed: speedKnots,
+        time: timeSeconds,
       });
 
       previousCourse = course;
@@ -197,6 +203,8 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
         command: NavigationCommand.END,
         turnAngle: 0,
         turnRadiusViolation: false,
+        speed: 0,
+        time: 0,
       });
     }
 

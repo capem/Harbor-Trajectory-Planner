@@ -1,11 +1,12 @@
 import React from 'react';
 import { TrajectoryLeg, NavigationCommand } from '../types';
-import { PortIcon, StarboardIcon, StraightIcon, StartIcon, EndIcon, TrashIcon, WarningIcon } from './Icons';
+import { PortIcon, StarboardIcon, StraightIcon, StartIcon, EndIcon, TrashIcon, WarningIcon, SpeedIcon, TimeIcon } from './Icons';
 
 interface TrajectoryInfoProps {
   legs: TrajectoryLeg[];
   onDeleteWaypoint: (id: number) => void;
   onLegHover: (id: number | null) => void;
+  onSpeedChange: (waypointId: number, speed: number) => void;
 }
 
 const CommandDisplay: React.FC<{ command: NavigationCommand; angle: number; violation: boolean; }> = ({ command, angle, violation }) => {
@@ -37,11 +38,25 @@ const CommandDisplay: React.FC<{ command: NavigationCommand; angle: number; viol
   );
 };
 
+function formatTime(totalSeconds: number): string {
+  if (isNaN(totalSeconds) || totalSeconds < 0) {
+    return '00:00:00';
+  }
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.floor(totalSeconds % 60);
 
-const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint, onLegHover }) => {
+  const pad = (num: number) => num.toString().padStart(2, '0');
+
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+
+const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint, onLegHover, onSpeedChange }) => {
   const actualLegs = legs.filter(leg => leg.command !== NavigationCommand.END);
   const totalLineDistance = actualLegs.reduce((sum, leg) => sum + leg.distance, 0);
   const totalCurveDistance = actualLegs.reduce((sum, leg) => sum + leg.curveDistance, 0);
+  const totalTimeSeconds = legs.reduce((sum, leg) => sum + (leg.time || 0), 0);
 
   return (
     <div className="flex flex-col">
@@ -67,24 +82,46 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
                   <CommandDisplay command={leg.command} angle={leg.turnAngle} violation={!!leg.turnRadiusViolation} />
                 </div>
                 {leg.command !== NavigationCommand.END && (
-                   <div className="mt-2 pt-2 border-t border-gray-700/50 space-y-1 text-sm text-gray-400">
-                      <div className="flex justify-between items-center">
-                          <span>Line Distance</span>
-                          <span className="font-mono text-gray-200">{leg.distance.toFixed(1)} m</span>
+                  <>
+                    <div className="mt-2 pt-2 border-t border-gray-700/50 space-y-1 text-sm text-gray-400">
+                        <div className="flex justify-between items-center">
+                            <span>Line Distance</span>
+                            <span className="font-mono text-gray-200">{leg.distance.toFixed(1)} m</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span>Curve Distance</span>
+                            <span className="font-mono text-gray-200">{leg.curveDistance.toFixed(1)} m</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span>Course (Bearing)</span>
+                            <span className="font-mono text-gray-200">{leg.course.toFixed(1)}°</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span>Initial Heading</span>
+                            <span className="font-mono text-gray-200">{leg.heading.toFixed(1)}°</span>
+                        </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-gray-600/50 flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                          <SpeedIcon className="w-5 h-5 text-cyan-400" />
+                          <input
+                              type="number"
+                              value={leg.speed}
+                              onChange={(e) => onSpeedChange(leg.id, Math.max(0, parseFloat(e.target.value) || 0))}
+                              onFocus={(e) => e.target.select()}
+                              min="0"
+                              step="0.5"
+                              className="w-16 bg-gray-900 border border-gray-600 rounded-md p-1 text-sm text-right font-mono text-white focus:ring-cyan-500 focus:border-cyan-500"
+                              aria-label={`Speed for leg ${index + 1}`}
+                          />
+                          <span className="text-gray-400 text-sm">kn</span>
                       </div>
-                      <div className="flex justify-between items-center">
-                          <span>Curve Distance</span>
-                          <span className="font-mono text-gray-200">{leg.curveDistance.toFixed(1)} m</span>
+                      <div className="flex items-center space-x-2 text-sm">
+                          <TimeIcon className="w-5 h-5 text-cyan-400" />
+                          <span className="font-mono text-gray-200">{formatTime(leg.time)}</span>
                       </div>
-                      <div className="flex justify-between items-center">
-                          <span>Course (Bearing)</span>
-                          <span className="font-mono text-gray-200">{leg.course.toFixed(1)}°</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                          <span>Initial Heading</span>
-                          <span className="font-mono text-gray-200">{leg.heading.toFixed(1)}°</span>
-                      </div>
-                  </div>
+                    </div>
+                  </>
                 )}
               </div>
                <button
@@ -101,12 +138,14 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
       )}
       {legs.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-700">
-          <h3 className="text-md font-semibold text-cyan-400 mb-2">Total Distances</h3>
+          <h3 className="text-md font-semibold text-cyan-400 mb-2">Totals</h3>
           <div className="text-sm text-gray-300 grid grid-cols-2 gap-x-4 gap-y-1">
             <span>Total Line:</span>
             <span className="font-mono text-right font-bold">{totalLineDistance.toFixed(1)} m</span>
             <span>Total Curve:</span>
             <span className="font-mono text-right font-bold">{totalCurveDistance.toFixed(1)} m</span>
+            <span>Total Time:</span>
+            <span className="font-mono text-right font-bold">{formatTime(totalTimeSeconds)}</span>
           </div>
         </div>
       )}

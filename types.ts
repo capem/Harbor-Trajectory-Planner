@@ -5,6 +5,7 @@ export interface GeoPoint {
 
 export interface Waypoint extends GeoPoint {
   id: number;
+  speedToNext?: number; // Speed in knots for the leg starting at this waypoint
 }
 
 export interface Ship {
@@ -32,6 +33,8 @@ export interface TrajectoryLeg {
   command: NavigationCommand;
   turnAngle: number;
   turnRadiusViolation?: boolean;
+  speed: number; // Speed in knots for this leg
+  time: number; // Time in seconds for this leg
 }
 
 export interface SavedPlan {
