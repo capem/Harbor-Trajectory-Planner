@@ -1,0 +1,5 @@
+{
+  "name": "Harbor Trajectory Planner",
+  "description": "A comprehensive harbor ship trajectory planning application that allows maritime pilots to plan, visualize, and optimize ship maneuvering paths in 2D. Features an interactive canvas, automatic calculations, map import, and ship customization.",
+  "requestFramePermissions": []
+}
