@@ -1,4 +1,5 @@
 
+
 import React, { useRef, useEffect } from 'react';
 import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand } from '../types';
 
@@ -13,6 +14,7 @@ interface PlanningCanvasProps {
   onDeleteWaypoint: (id: number) => void;
   legs: TrajectoryLeg[];
   zoomToFitTrigger: number;
+  isMeasuring: boolean;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -24,6 +26,20 @@ function toRad(deg: number): number {
 
 function toDeg(rad: number): number {
   return rad * 180 / Math.PI;
+}
+
+function getDistance(p1: GeoPoint, p2: GeoPoint): number {
+  const lat1 = toRad(p1.lat);
+  const lat2 = toRad(p2.lat);
+  const deltaLat = toRad(p2.lat - p1.lat);
+  const deltaLng = toRad(p2.lng - p1.lng);
+
+  const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+            Math.cos(lat1) * Math.cos(lat2) *
+            Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // in metres
 }
 
 /**
@@ -98,10 +114,15 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
   );
 }
 
-const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, legs, zoomToFitTrigger }) => {
+const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, legs, zoomToFitTrigger, isMeasuring }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
+
+  // Refs for measurement tool
+  const measureLineRef = useRef<any>(null);
+  const measureTooltipRef = useRef<any>(null);
+  const measureStartPointRef = useRef<any>(null); // Leaflet LatLng object
 
   // Initialize map
   useEffect(() => {
@@ -112,13 +133,90 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
 
-      map.on('click', (e: any) => {
-        onAddWaypoint({ lat: e.latlng.lat, lng: e.latlng.lng });
-      });
-
       mapRef.current = map;
     }
-  }, [onAddWaypoint]);
+  }, []);
+
+  // Effect to handle mode switching (waypoint plotting vs. measuring)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // --- Always clean up previous listeners before setting new ones ---
+    map.off('click');
+    map.off('mousemove');
+
+    // Clean up any visible measurement artifacts
+    const cleanupLayers = () => {
+        if (measureLineRef.current) {
+            map.removeLayer(measureLineRef.current);
+            measureLineRef.current = null;
+        }
+        if (measureTooltipRef.current) {
+            map.removeLayer(measureTooltipRef.current);
+            measureTooltipRef.current = null;
+        }
+        measureStartPointRef.current = null;
+    }
+    
+    if (isMeasuring) {
+        if(mapContainerRef.current) mapContainerRef.current.style.cursor = 'cell';
+
+        const handleMeasureClick = (e: any) => {
+            if (measureStartPointRef.current) { // This is the second click
+                map.off('mousemove'); // Stop drawing line
+                const finalDistance = getDistance(measureStartPointRef.current, e.latlng);
+                measureTooltipRef.current?.setContent(`<strong>Total:</strong> ${finalDistance.toFixed(1)} m`);
+                measureLineRef.current?.setStyle({ dashArray: null }); // Make line solid
+                measureStartPointRef.current = null; // Reset for next measurement
+            } else { // This is the first click
+                 // Clear previous finished measurement if it exists
+                cleanupLayers();
+
+                measureStartPointRef.current = e.latlng;
+                measureLineRef.current = L.polyline([e.latlng, e.latlng], {
+                    color: '#FBBF24', // amber-400
+                    weight: 3,
+                    dashArray: '5, 10'
+                }).addTo(map);
+
+                measureTooltipRef.current = L.tooltip({
+                    permanent: true,
+                    direction: 'right',
+                    offset: L.point(10, 0),
+                    className: 'measurement-tooltip'
+                })
+                .setLatLng(e.latlng)
+                .setContent('Measuring...')
+                .addTo(map);
+
+                map.on('mousemove', (moveEvent: any) => {
+                    const currentPoint = moveEvent.latlng;
+                    measureLineRef.current?.setLatLngs([measureStartPointRef.current, currentPoint]);
+                    const distance = getDistance(measureStartPointRef.current, currentPoint);
+                    measureTooltipRef.current?.setLatLng(currentPoint).setContent(`Distance: ${distance.toFixed(1)} m`);
+                });
+            }
+        };
+
+        map.on('click', handleMeasureClick);
+    } else {
+        cleanupLayers();
+        if(mapContainerRef.current) mapContainerRef.current.style.cursor = 'crosshair';
+        // Set back to adding waypoints
+        map.on('click', (e: any) => {
+            onAddWaypoint({ lat: e.latlng.lat, lng: e.latlng.lng });
+        });
+    }
+
+    return () => { // Cleanup when component unmounts
+        if (map) {
+            map.off('click');
+            map.off('mousemove');
+            cleanupLayers();
+        }
+    };
+  }, [isMeasuring, onAddWaypoint]);
 
   // Update map layers when waypoints change
   useEffect(() => {
@@ -236,7 +334,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
   }, [zoomToFitTrigger]);
 
   return (
-    <div ref={mapContainerRef} className="w-full h-full" style={{cursor: 'crosshair'}} />
+    <div ref={mapContainerRef} className="w-full h-full" />
   );
 };
 

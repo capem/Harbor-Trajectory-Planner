@@ -1,6 +1,6 @@
 import React, { useCallback, useRef } from 'react';
 import { Ship } from '../types';
-import { TrashIcon, ImportIcon, ExportIcon } from './Icons';
+import { TrashIcon, ImportIcon, ExportIcon, MeasureIcon } from './Icons';
 
 interface ControlsProps {
   ship: Ship;
@@ -8,6 +8,8 @@ interface ControlsProps {
   onClear: () => void;
   onImportPlan: (file: File) => void;
   onExportPlan: () => void;
+  isMeasuring: boolean;
+  onToggleMeasure: () => void;
 }
 
 const ControlInput: React.FC<{ label: string; value: number; onChange: (value: number) => void; unit: string }> = ({ label, value, onChange, unit }) => (
@@ -25,18 +27,18 @@ const ControlInput: React.FC<{ label: string; value: number; onChange: (value: n
   </div>
 );
 
-const ActionButton: React.FC<{ onClick: () => void; children: React.ReactNode; className?: string, title: string }> = ({ onClick, children, className, title }) => (
+const ActionButton: React.FC<{ onClick: () => void; children: React.ReactNode; className?: string, title: string, isActive?: boolean }> = ({ onClick, children, className, title, isActive = false }) => (
   <button
     onClick={onClick}
     title={title}
-    className={`w-full flex items-center justify-center p-2 rounded-md text-white font-semibold transition-colors ${className}`}
+    className={`w-full flex items-center justify-center p-2 rounded-md text-white font-semibold transition-colors ${className} ${isActive ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-cyan-400' : ''}`}
   >
     {children}
   </button>
 );
 
 
-const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPlan, onExportPlan }) => {
+const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPlan, onExportPlan, isMeasuring, onToggleMeasure }) => {
   const planFileInputRef = useRef<HTMLInputElement>(null);
   
   const handlePlanFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,6 +89,15 @@ const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPla
             accept=".json,application/json"
          />
          <div className="grid grid-cols-2 gap-3">
+            <ActionButton 
+                onClick={onToggleMeasure}
+                className="bg-cyan-600 hover:bg-cyan-500 col-span-2"
+                title="Measure Distance"
+                isActive={isMeasuring}
+            >
+                <MeasureIcon className="w-5 h-5 mr-2" />
+                Measure Distance
+            </ActionButton>
             <ActionButton onClick={triggerPlanFileInput} className="bg-indigo-600 hover:bg-indigo-500" title="Import Trajectory Plan">
                 <ImportIcon className="w-5 h-5 mr-2" />
                 Import Plan

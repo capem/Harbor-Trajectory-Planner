@@ -10,6 +10,7 @@ const App: React.FC = () => {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [ship, setShip] = useState<Ship>({ length: 150, beam: 25, turningRadius: 300 });
   const [zoomToFitTrigger, setZoomToFitTrigger] = useState(0);
+  const [isMeasuring, setIsMeasuring] = useState(false);
 
   const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship);
 
@@ -72,6 +73,10 @@ const App: React.FC = () => {
     reader.readAsText(file);
   }, []);
 
+  const handleToggleMeasure = useCallback(() => {
+    setIsMeasuring(prev => !prev);
+  }, []);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-200 font-sans">
       <header className="bg-gray-800 shadow-lg z-10 p-2">
@@ -90,6 +95,8 @@ const App: React.FC = () => {
             onClear={handleClear}
             onImportPlan={handleImportPlan}
             onExportPlan={handleExportPlan}
+            isMeasuring={isMeasuring}
+            onToggleMeasure={handleToggleMeasure}
           />
           <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} />
         </aside>
@@ -102,6 +109,7 @@ const App: React.FC = () => {
             onDeleteWaypoint={handleDeleteWaypoint}
             legs={trajectoryLegs}
             zoomToFitTrigger={zoomToFitTrigger}
+            isMeasuring={isMeasuring}
           />
         </main>
       </div>
