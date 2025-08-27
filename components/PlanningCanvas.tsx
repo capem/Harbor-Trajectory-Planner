@@ -11,6 +11,7 @@ interface PlanningCanvasProps {
   onUpdateWaypoint: (id: number, point: GeoPoint) => void;
   onDeleteWaypoint: (id: number) => void;
   legs: TrajectoryLeg[];
+  zoomToFitTrigger: number;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -96,7 +97,7 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
   );
 }
 
-const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, legs }) => {
+const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, legs, zoomToFitTrigger }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
@@ -118,7 +119,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
     }
   }, [onAddWaypoint]);
 
-  // Update map when waypoints change
+  // Update map layers when waypoints change
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -206,15 +207,20 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
       });
       layersRef.current.push(...shipPolygons);
     }
-    
-    // Zoom to fit waypoints
-    if (waypoints.length > 0) {
-        const bounds = L.latLngBounds(waypoints.map(wp => [wp.lat, wp.lng]));
-        map.fitBounds(bounds, { padding: [50, 50] });
-    }
-
   }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint]);
   
+  // Auto-zoom to fit waypoints when a plan is imported
+  useEffect(() => {
+    // Do not run on initial load (trigger is 0), or if there's nothing to zoom to.
+    if (zoomToFitTrigger === 0 || !mapRef.current || waypoints.length === 0) {
+      return;
+    }
+
+    const bounds = L.latLngBounds(waypoints.map(wp => [wp.lat, wp.lng]));
+    mapRef.current.fitBounds(bounds, { padding: [50, 50] });
+    
+  }, [zoomToFitTrigger]);
+
   return (
     <div ref={mapContainerRef} className="w-full h-full" style={{cursor: 'crosshair'}} />
   );

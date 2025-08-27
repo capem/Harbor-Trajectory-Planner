@@ -9,6 +9,7 @@ import { GithubIcon } from './components/Icons';
 const App: React.FC = () => {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [ship, setShip] = useState<Ship>({ length: 150, beam: 25, turningRadius: 300 });
+  const [zoomToFitTrigger, setZoomToFitTrigger] = useState(0);
 
   const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship);
 
@@ -59,6 +60,7 @@ const App: React.FC = () => {
           setWaypoints(plan.waypoints);
           // Provide default turningRadius if not in imported file for backward compatibility
           setShip({ turningRadius: 300, ...plan.ship });
+          setZoomToFitTrigger(c => c + 1); // Trigger auto-zoom
         } else {
           alert('Invalid plan file format.');
         }
@@ -99,8 +101,9 @@ const App: React.FC = () => {
             onUpdateWaypoint={handleUpdateWaypoint}
             onDeleteWaypoint={handleDeleteWaypoint}
             legs={trajectoryLegs}
+            zoomToFitTrigger={zoomToFitTrigger}
           />
-        main>
+        </main>
       </div>
     </div>
   );
