@@ -123,7 +123,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
 
   useEffect(() => {
     if (mapContainerRef.current && !mapRef.current) {
-      const map = L.map(mapContainerRef.current).setView([40.7128, -74.0060], 13);
+      const map = L.map(mapContainerRef.current).setView([33.6069, -7.6228], 14);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
