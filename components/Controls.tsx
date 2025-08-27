@@ -11,14 +11,14 @@ interface ControlsProps {
 }
 
 const ControlInput: React.FC<{ label: string; value: number; onChange: (value: number) => void; unit: string }> = ({ label, value, onChange, unit }) => (
-  <div>
-    <label className="block text-sm font-medium text-gray-400 mb-1">{label}</label>
+  <div className="grid grid-cols-2 items-center gap-x-4">
+    <label className="block text-sm font-medium text-gray-400">{label}</label>
     <div className="flex items-center">
       <input
         type="number"
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-        className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-cyan-500 focus:border-cyan-500"
+        className="w-full bg-gray-700 border border-gray-600 rounded-md p-1 text-sm text-white focus:ring-cyan-500 focus:border-cyan-500"
       />
       <span className="ml-2 text-gray-400">{unit}</span>
     </div>
@@ -52,10 +52,10 @@ const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPla
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="p-4 bg-gray-900 rounded-lg">
-        <h2 className="text-lg font-semibold text-cyan-400 border-b border-gray-700 pb-2 mb-4">Configuration</h2>
-        <div className="space-y-4">
+    <div className="space-y-4">
+      <div className="p-3 bg-gray-900 rounded-lg">
+        <h2 className="text-md font-semibold text-cyan-400 border-b border-gray-700 pb-2 mb-3">Configuration</h2>
+        <div className="space-y-2">
           <ControlInput
             label="Ship Length"
             value={ship.length}
@@ -77,8 +77,8 @@ const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPla
         </div>
       </div>
       
-      <div className="p-4 bg-gray-900 rounded-lg">
-         <h2 className="text-lg font-semibold text-cyan-400 border-b border-gray-700 pb-2 mb-4">Actions</h2>
+      <div className="p-3 bg-gray-900 rounded-lg">
+         <h2 className="text-md font-semibold text-cyan-400 border-b border-gray-700 pb-2 mb-3">Actions</h2>
          <input
             type="file"
             ref={planFileInputRef}

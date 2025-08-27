@@ -188,36 +188,38 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
       // Straight Path
       const straightPath = L.polyline(waypoints.map(wp => [wp.lat, wp.lng]), { color: 'rgba(56, 189, 248, 0.7)', weight: 2 }).addTo(map);
       layersRef.current.push(straightPath);
-      
-      // Ship Polygons
-      const shipPolygons = legs.map((leg) => {
-        let color: string;
-        switch (leg.command) {
-          case NavigationCommand.START:
-            color = '#10B981'; // green-500
-            break;
-          case NavigationCommand.END:
-            color = '#FBBF24'; // yellow-400, consistent with info panel
-            break;
-          default:
-            color = '#3B82F6'; // blue-500 for intermediate points
-            break;
-        }
+    }
+    
+    // Ship Polygons
+    if (legs.length > 0) {
+        const shipPolygons = legs.map((leg) => {
+            let color: string;
+            switch (leg.command) {
+            case NavigationCommand.START:
+                color = '#10B981'; // green-500
+                break;
+            case NavigationCommand.END:
+                color = '#FBBF24'; // yellow-400, consistent with info panel
+                break;
+            default:
+                color = '#3B82F6'; // blue-500 for intermediate points
+                break;
+            }
 
-        const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, leg.bearing);
-        
-        const shipPolygon = L.polygon(shipCoords.map(p => [p.lat, p.lng]), {
-            color: color,
-            fillColor: color,
-            fillOpacity: 0.5,
-            weight: 1,
-            interactive: false,
-            zIndexOffset: -1000
-        }).addTo(map);
+            const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, leg.bearing);
+            
+            const shipPolygon = L.polygon(shipCoords.map(p => [p.lat, p.lng]), {
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.5,
+                weight: 1,
+                interactive: false,
+                zIndexOffset: -1000
+            }).addTo(map);
 
-        return shipPolygon;
-      });
-      layersRef.current.push(...shipPolygons);
+            return shipPolygon;
+        });
+        layersRef.current.push(...shipPolygons);
     }
   }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint]);
   
