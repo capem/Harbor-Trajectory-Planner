@@ -15,6 +15,7 @@ interface PlanningCanvasProps {
   legs: TrajectoryLeg[];
   zoomToFitTrigger: number;
   isMeasuring: boolean;
+  isPlotting: boolean;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -40,6 +41,20 @@ function getDistance(p1: GeoPoint, p2: GeoPoint): number {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c; // in metres
+}
+
+function getBearing(p1: GeoPoint, p2: GeoPoint): number {
+  const lat1 = toRad(p1.lat);
+  const lng1 = toRad(p1.lng);
+  const lat2 = toRad(p2.lat);
+  const lng2 = toRad(p2.lng);
+
+  const y = Math.sin(lng2 - lng1) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) -
+            Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
+  const theta = Math.atan2(y, x);
+  const brng = (toDeg(theta) + 360) % 360; // in degrees
+  return brng;
 }
 
 /**
@@ -114,7 +129,7 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
   );
 }
 
-const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, legs, zoomToFitTrigger, isMeasuring }) => {
+const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, legs, zoomToFitTrigger, isMeasuring, isPlotting }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
@@ -123,6 +138,10 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
   const measureLineRef = useRef<any>(null);
   const measureTooltipRef = useRef<any>(null);
   const measureStartPointRef = useRef<any>(null); // Leaflet LatLng object
+  
+  // Refs for live plotting preview
+  const plotPreviewLineRef = useRef<any>(null);
+  const plotPreviewTooltipRef = useRef<any>(null);
 
   // Initialize map
   useEffect(() => {
@@ -137,7 +156,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
     }
   }, []);
 
-  // Effect to handle mode switching (waypoint plotting vs. measuring)
+  // Effect to handle mode switching (plotting vs. measuring vs. neutral)
   useEffect(() => {
     const map = mapRef.current;
     const mapContainer = mapContainerRef.current;
@@ -146,55 +165,49 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
     // --- Always clean up previous listeners before setting new ones ---
     map.off('click');
     map.off('mousemove');
+    map.off('mouseout');
+    mapContainer.classList.remove('plotting-mode', 'measuring-active');
 
-    // Clean up any visible measurement artifacts
-    const cleanupLayers = () => {
-        if (measureLineRef.current) {
-            map.removeLayer(measureLineRef.current);
-            measureLineRef.current = null;
-        }
-        if (measureTooltipRef.current) {
-            map.removeLayer(measureTooltipRef.current);
-            measureTooltipRef.current = null;
-        }
+    // --- Helper cleanup functions ---
+    const cleanupMeasureLayers = () => {
+        if (measureLineRef.current) map.removeLayer(measureLineRef.current);
+        if (measureTooltipRef.current) map.removeLayer(measureTooltipRef.current);
+        measureLineRef.current = null;
+        measureTooltipRef.current = null;
         measureStartPointRef.current = null;
     }
     
+    const cleanupPlotPreviewLayers = () => {
+        if (plotPreviewLineRef.current) map.removeLayer(plotPreviewLineRef.current);
+        if (plotPreviewTooltipRef.current) map.removeLayer(plotPreviewTooltipRef.current);
+        plotPreviewLineRef.current = null;
+        plotPreviewTooltipRef.current = null;
+    }
+    
     if (isMeasuring) {
+        cleanupPlotPreviewLayers();
         map.dragging.disable();
-        mapContainer.classList.remove('plotting-mode');
         mapContainer.classList.add('measuring-active');
 
         const handleMeasureClick = (e: any) => {
-            if (measureStartPointRef.current) { // This is the second click
-                map.off('mousemove'); // Stop drawing line
+            if (measureStartPointRef.current) { // Second click
+                map.off('mousemove'); 
                 const finalDistance = getDistance(measureStartPointRef.current, e.latlng);
                 measureTooltipRef.current?.setContent(`<strong>Total:</strong> ${finalDistance.toFixed(1)} m`);
-                measureLineRef.current?.setStyle({ dashArray: null }); // Make line solid
-                measureStartPointRef.current = null; // Reset for next measurement
-            } else { // This is the first click
-                 // Clear previous finished measurement if it exists
-                cleanupLayers();
-
+                measureLineRef.current?.setStyle({ dashArray: null });
+                measureStartPointRef.current = null; 
+            } else { // First click
+                cleanupMeasureLayers();
                 measureStartPointRef.current = e.latlng;
                 measureLineRef.current = L.polyline([e.latlng, e.latlng], {
-                    color: '#FBBF24', // amber-400
-                    weight: 3,
-                    dashArray: '5, 10',
-                    interactive: false, // Make the measurement line non-interactive
+                    color: '#FBBF24', weight: 3, dashArray: '5, 10', interactive: false,
                 }).addTo(map);
-
                 measureTooltipRef.current = L.tooltip({
-                    permanent: true,
-                    direction: 'right',
-                    offset: L.point(10, 0),
-                    className: 'measurement-tooltip'
-                })
-                .setLatLng(e.latlng)
-                .setContent('Measuring...')
-                .addTo(map);
+                    permanent: true, direction: 'right', offset: L.point(10, 0), className: 'measurement-tooltip'
+                }).setLatLng(e.latlng).setContent('Measuring...').addTo(map);
 
                 map.on('mousemove', (moveEvent: any) => {
+                    if (!measureStartPointRef.current) return;
                     const currentPoint = moveEvent.latlng;
                     measureLineRef.current?.setLatLngs([measureStartPointRef.current, currentPoint]);
                     const distance = getDistance(measureStartPointRef.current, currentPoint);
@@ -202,28 +215,64 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
                 });
             }
         };
-
         map.on('click', handleMeasureClick);
-    } else {
+    } else if (isPlotting) {
+        cleanupMeasureLayers();
         map.dragging.enable();
-        cleanupLayers();
-        mapContainer.classList.remove('measuring-active');
         mapContainer.classList.add('plotting-mode');
-        // Set back to adding waypoints
-        map.on('click', (e: any) => {
-            onAddWaypoint({ lat: e.latlng.lat, lng: e.latlng.lng });
-        });
+        map.on('click', (e: any) => onAddWaypoint({ lat: e.latlng.lat, lng: e.latlng.lng }));
+        
+        // Add live plot preview logic
+        if (waypoints.length > 0) {
+            const lastWaypoint = waypoints[waypoints.length - 1];
+            map.on('mousemove', (e: any) => {
+                const currentLatLng = e.latlng;
+                
+                if (!plotPreviewLineRef.current) {
+                    plotPreviewLineRef.current = L.polyline([lastWaypoint, currentLatLng], {
+                        color: '#06b6d4', weight: 2, dashArray: '8, 8', interactive: false,
+                    }).addTo(map);
+                } else {
+                    plotPreviewLineRef.current.setLatLngs([lastWaypoint, currentLatLng]);
+                }
+
+                const distance = getDistance(lastWaypoint, currentLatLng);
+                const bearing = getBearing(lastWaypoint, currentLatLng);
+                const tooltipContent = `
+                  <div class="text-left">
+                    <div><strong>Distance:</strong> ${distance.toFixed(1)} m</div>
+                    <div><strong>Bearing:</strong> ${bearing.toFixed(1)}°</div>
+                  </div>
+                `;
+
+                if (!plotPreviewTooltipRef.current) {
+                    plotPreviewTooltipRef.current = L.tooltip({
+                        permanent: true, direction: 'right', offset: L.point(15, 0), className: 'measurement-tooltip'
+                    }).setLatLng(currentLatLng).setContent(tooltipContent).addTo(map);
+                } else {
+                    plotPreviewTooltipRef.current.setLatLng(currentLatLng).setContent(tooltipContent);
+                }
+            });
+
+            map.on('mouseout', () => {
+                cleanupPlotPreviewLayers();
+            });
+        }
+    } else { // Neutral mode
+        map.dragging.enable();
+        cleanupMeasureLayers();
+        cleanupPlotPreviewLayers();
     }
 
-    return () => { // Cleanup when component unmounts
-        if (map) {
-            map.dragging.enable();
-            map.off('click');
-            map.off('mousemove');
-            cleanupLayers();
-        }
+    return () => { // General cleanup on mode change
+        map.dragging.enable();
+        map.off('click');
+        map.off('mousemove');
+        map.off('mouseout');
+        cleanupMeasureLayers();
+        cleanupPlotPreviewLayers();
     };
-  }, [isMeasuring, onAddWaypoint]);
+  }, [isMeasuring, isPlotting, onAddWaypoint, waypoints]);
 
   // Update map layers when waypoints or measuring state change
   useEffect(() => {
@@ -234,6 +283,8 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
     layersRef.current.forEach(layer => map.removeLayer(layer));
     layersRef.current = [];
     
+    const isInteractive = !isMeasuring && !isPlotting;
+
     // Waypoint Markers
     const waypointMarkers = waypoints.map((wp, index) => {
       const leg = legs.find(l => l.start.id === wp.id);
@@ -248,8 +299,8 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
       `;
       
       const marker = L.marker([wp.lat, wp.lng], {
-        draggable: !isMeasuring,
-        interactive: !isMeasuring, // This is the key change to prevent hover cursors
+        draggable: isInteractive,
+        interactive: isInteractive,
         icon: L.divIcon({
           className: 'waypoint-marker',
           html: iconHtml,
@@ -258,12 +309,10 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
         })
       }).addTo(map);
 
-      // Only attach event listeners if the marker is interactive
-      if (!isMeasuring) {
+      if (isInteractive) {
         marker.on('dragend', (e: any) => {
           onUpdateWaypoint(wp.id, e.target.getLatLng());
         });
-
         marker.on('contextmenu', () => {
           onDeleteWaypoint(wp.id);
         });
@@ -274,10 +323,6 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
     layersRef.current.push(...waypointMarkers);
 
     if (waypoints.length > 1) {
-      const pathOptions = {
-        interactive: !isMeasuring, // Make paths non-interactive during measurement
-      };
-
       // Smooth Trajectory (Catmull-Rom)
       const interpolatedPoints = waypoints.slice(0, -1).flatMap((wp, i) => {
           const p0 = waypoints[i - 1] || waypoints[i];
@@ -290,16 +335,15 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
             lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng),
           });
 
-          // Generate 15 points for each segment for a smooth curve
           return Array.from({ length: 15 }, (_, i) => i / 15).map(interpolator);
       });
       interpolatedPoints.push(waypoints[waypoints.length-1]);
 
-      const smoothPath = L.polyline(interpolatedPoints.map(p => [p.lat, p.lng]), { color: 'rgba(255, 255, 255, 0.7)', weight: 3, dashArray: '10, 10', ...pathOptions }).addTo(map);
+      const smoothPath = L.polyline(interpolatedPoints.map(p => [p.lat, p.lng]), { color: 'rgba(255, 255, 255, 0.7)', weight: 3, dashArray: '10, 10', interactive: false }).addTo(map);
       layersRef.current.push(smoothPath);
       
       // Straight Path
-      const straightPath = L.polyline(waypoints.map(wp => [wp.lat, wp.lng]), { color: 'rgba(56, 189, 248, 0.7)', weight: 2, ...pathOptions }).addTo(map);
+      const straightPath = L.polyline(waypoints.map(wp => [wp.lat, wp.lng]), { color: 'rgba(56, 189, 248, 0.7)', weight: 2, interactive: false }).addTo(map);
       layersRef.current.push(straightPath);
     }
     
@@ -334,11 +378,10 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ waypoints, ship, onAddW
         });
         layersRef.current.push(...shipPolygons);
     }
-  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring]);
+  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting]);
   
   // Auto-zoom to fit waypoints when a plan is imported
   useEffect(() => {
-    // Do not run on initial load (trigger is 0), or if there's nothing to zoom to.
     if (zoomToFitTrigger === 0 || !mapRef.current || waypoints.length === 0) {
       return;
     }

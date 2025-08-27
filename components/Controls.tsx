@@ -1,6 +1,6 @@
 import React, { useCallback, useRef } from 'react';
 import { Ship } from '../types';
-import { TrashIcon, ImportIcon, ExportIcon, MeasureIcon } from './Icons';
+import { TrashIcon, ImportIcon, ExportIcon, MeasureIcon, PlotIcon } from './Icons';
 
 interface ControlsProps {
   ship: Ship;
@@ -10,6 +10,8 @@ interface ControlsProps {
   onExportPlan: () => void;
   isMeasuring: boolean;
   onToggleMeasure: () => void;
+  isPlotting: boolean;
+  onTogglePlotting: () => void;
 }
 
 const ControlInput: React.FC<{ label: string; value: number; onChange: (value: number) => void; unit: string }> = ({ label, value, onChange, unit }) => (
@@ -38,7 +40,7 @@ const ActionButton: React.FC<{ onClick: () => void; children: React.ReactNode; c
 );
 
 
-const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPlan, onExportPlan, isMeasuring, onToggleMeasure }) => {
+const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPlan, onExportPlan, isMeasuring, onToggleMeasure, isPlotting, onTogglePlotting }) => {
   const planFileInputRef = useRef<HTMLInputElement>(null);
   
   const handlePlanFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,9 +91,18 @@ const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPla
             accept=".json,application/json"
          />
          <div className="grid grid-cols-2 gap-3">
+             <ActionButton 
+                onClick={onTogglePlotting}
+                className="bg-sky-600 hover:bg-sky-500"
+                title="Toggle waypoint plotting mode. Click on the map to add waypoints."
+                isActive={isPlotting}
+            >
+                <PlotIcon className="w-5 h-5 mr-2" />
+                Plot Waypoints
+            </ActionButton>
             <ActionButton 
                 onClick={onToggleMeasure}
-                className="bg-cyan-600 hover:bg-cyan-500 col-span-2"
+                className="bg-cyan-600 hover:bg-cyan-500"
                 title="Activate measurement tool. Click two points on the map to measure the distance between them."
                 isActive={isMeasuring}
             >

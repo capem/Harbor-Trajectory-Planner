@@ -11,6 +11,7 @@ const App: React.FC = () => {
   const [ship, setShip] = useState<Ship>({ length: 150, beam: 25, turningRadius: 300 });
   const [zoomToFitTrigger, setZoomToFitTrigger] = useState(0);
   const [isMeasuring, setIsMeasuring] = useState(false);
+  const [isPlotting, setIsPlotting] = useState(false);
 
   const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship);
 
@@ -34,6 +35,8 @@ const App: React.FC = () => {
 
   const handleClear = useCallback(() => {
     setWaypoints([]);
+    setIsPlotting(false);
+    setIsMeasuring(false);
   }, []);
 
   const handleExportPlan = useCallback(() => {
@@ -62,6 +65,8 @@ const App: React.FC = () => {
           // Provide default turningRadius if not in imported file for backward compatibility
           setShip({ turningRadius: 300, ...plan.ship });
           setZoomToFitTrigger(c => c + 1); // Trigger auto-zoom
+          setIsPlotting(false);
+          setIsMeasuring(false);
         } else {
           alert('Invalid plan file format.');
         }
@@ -74,8 +79,20 @@ const App: React.FC = () => {
   }, []);
 
   const handleToggleMeasure = useCallback(() => {
+    // If we are about to turn measuring ON, make sure plotting is OFF.
+    if (!isMeasuring) {
+      setIsPlotting(false);
+    }
     setIsMeasuring(prev => !prev);
-  }, []);
+  }, [isMeasuring]);
+
+  const handleTogglePlotting = useCallback(() => {
+    // If we are about to turn plotting ON, make sure measuring is OFF.
+    if (!isPlotting) {
+      setIsMeasuring(false);
+    }
+    setIsPlotting(prev => !prev);
+  }, [isPlotting]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-200 font-sans">
@@ -97,6 +114,8 @@ const App: React.FC = () => {
             onExportPlan={handleExportPlan}
             isMeasuring={isMeasuring}
             onToggleMeasure={handleToggleMeasure}
+            isPlotting={isPlotting}
+            onTogglePlotting={handleTogglePlotting}
           />
           <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} />
         </aside>
@@ -110,6 +129,7 @@ const App: React.FC = () => {
             legs={trajectoryLegs}
             zoomToFitTrigger={zoomToFitTrigger}
             isMeasuring={isMeasuring}
+            isPlotting={isPlotting}
           />
         </main>
       </div>
