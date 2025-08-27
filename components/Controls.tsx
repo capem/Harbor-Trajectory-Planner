@@ -92,21 +92,21 @@ const Controls: React.FC<ControlsProps> = ({ ship, setShip, onClear, onImportPla
             <ActionButton 
                 onClick={onToggleMeasure}
                 className="bg-cyan-600 hover:bg-cyan-500 col-span-2"
-                title="Measure Distance"
+                title="Activate measurement tool. Click two points on the map to measure the distance between them."
                 isActive={isMeasuring}
             >
                 <MeasureIcon className="w-5 h-5 mr-2" />
                 Measure Distance
             </ActionButton>
-            <ActionButton onClick={triggerPlanFileInput} className="bg-indigo-600 hover:bg-indigo-500" title="Import Trajectory Plan">
+            <ActionButton onClick={triggerPlanFileInput} className="bg-indigo-600 hover:bg-indigo-500" title="Import a previously saved trajectory plan (.json file).">
                 <ImportIcon className="w-5 h-5 mr-2" />
                 Import Plan
             </ActionButton>
-            <ActionButton onClick={onExportPlan} className="bg-emerald-600 hover:bg-emerald-500" title="Export Trajectory Plan">
+            <ActionButton onClick={onExportPlan} className="bg-emerald-600 hover:bg-emerald-500" title="Save the current waypoints and ship configuration to a JSON file.">
                 <ExportIcon className="w-5 h-5 mr-2" />
                 Export Plan
             </ActionButton>
-            <ActionButton onClick={onClear} className="bg-red-600 hover:bg-red-500 col-span-2" title="Clear All Waypoints">
+            <ActionButton onClick={onClear} className="bg-red-600 hover:bg-red-500 col-span-2" title="Remove all waypoints and clear the current plan. This action cannot be undone.">
                 <TrashIcon className="w-5 h-5 mr-2" />
                 Clear Plan
             </ActionButton>
