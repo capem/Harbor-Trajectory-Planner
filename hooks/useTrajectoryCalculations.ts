@@ -104,87 +104,91 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
       return [];
     }
 
-    // 1. Calculate basic properties for each leg.
-    const legs: Omit<TrajectoryLeg, 'command' | 'turnAngle' | 'turnRadiusViolation'>[] = [];
+    const trajectoryLegs: TrajectoryLeg[] = [];
+    let previousStraightBearing: number | null = null;
+
     for (let i = 0; i < waypoints.length - 1; i++) {
       const start = waypoints[i];
       const end = waypoints[i + 1];
 
-      const distance = getDistance(start, end);
-      const bearing = getBearing(start, end);
-      
+      // --- Straight Leg Properties (for turning logic) ---
+      const straightDistance = getDistance(start, end);
+      const straightBearing = getBearing(start, end);
+
+      // --- Curve Properties ---
       const p0 = waypoints[i - 1] || start;
       const p1 = start;
       const p2 = end;
       const p3 = waypoints[i + 2] || end;
       const curveDistance = calculateCurveLength(p0, p1, p2, p3);
 
-      legs.push({
+      // --- Tangential Bearing (for ship orientation) ---
+      // The tangent at `start` (p1) is parallel to the vector from p0 to p2.
+      const tangentialBearing = getBearing(p0, p2);
+
+      // --- Command, Turn Angle, and Violation ---
+      let command: NavigationCommand;
+      let turnAngle = 0;
+      
+      if (i === 0) {
+        command = NavigationCommand.START;
+      } else {
+        const bearingIn = previousStraightBearing!;
+        const bearingOut = straightBearing;
+
+        let angle = bearingOut - bearingIn;
+        if (angle > 180) angle -= 360;
+        if (angle < -180) angle += 360;
+        turnAngle = angle;
+
+        if (turnAngle > TURN_THRESHOLD) {
+          command = NavigationCommand.PORT;
+        } else if (turnAngle < -TURN_THRESHOLD) {
+          command = NavigationCommand.STARBOARD;
+        } else {
+          command = NavigationCommand.STRAIGHT;
+        }
+      }
+
+      // --- Turn Radius Violation ---
+      let turnRadiusViolation = false;
+      // Only check for violation on actual turns (not the start or straight segments)
+      if (command === NavigationCommand.PORT || command === NavigationCommand.STARBOARD) {
+        const turnRadiusMeters = calculateTurnRadius(p0, p1, p2, p3);
+        turnRadiusViolation = turnRadiusMeters < ship.turningRadius;
+      }
+
+      trajectoryLegs.push({
         id: start.id,
         start,
         end,
-        distance,
+        distance: straightDistance,
         curveDistance,
-        bearing,
-      });
-    }
-
-    // 2. Determine command, turn angle, and violations.
-    let trajectoryLegs: TrajectoryLeg[] = legs.map((leg, i) => {
-      if (i === 0) {
-        return {
-          ...leg,
-          command: NavigationCommand.START,
-          turnAngle: 0,
-          turnRadiusViolation: false,
-        };
-      }
-
-      const previousLeg = legs[i - 1];
-      const bearingIn = previousLeg.bearing;
-      const bearingOut = leg.bearing;
-
-      let turnAngle = bearingOut - bearingIn;
-      if (turnAngle > 180) turnAngle -= 360;
-      if (turnAngle < -180) turnAngle += 360;
-
-      let command: NavigationCommand;
-      if (turnAngle > TURN_THRESHOLD) {
-        command = NavigationCommand.PORT;
-      } else if (turnAngle < -TURN_THRESHOLD) {
-        command = NavigationCommand.STARBOARD;
-      } else {
-        command = NavigationCommand.STRAIGHT;
-      }
-
-      // Calculate turn radius violation at the start of this leg (which is waypoints[i])
-      const p0 = waypoints[i - 1];
-      const p1 = waypoints[i];
-      const p2 = waypoints[i + 1];
-      const p3 = waypoints[i + 2] || p2; // Repeat last point if at the end
-      
-      const turnRadiusMeters = calculateTurnRadius(p0, p1, p2, p3);
-      const turnRadiusViolation = turnRadiusMeters < ship.turningRadius;
-
-      return {
-        ...leg,
+        bearing: tangentialBearing, // Use tangential bearing for visualization
         command,
         turnAngle,
         turnRadiusViolation,
-      };
-    });
+      });
 
-    // 3. Add a final entry for the end of the plan.
+      previousStraightBearing = straightBearing;
+    }
+
+    // Add a final entry for the end of the plan.
     if (waypoints.length > 0) {
       const lastWaypoint = waypoints[waypoints.length - 1];
-      const lastLeg = legs[legs.length - 1];
+      const previousWaypoint = waypoints[waypoints.length - 2] || lastWaypoint;
+      
+      // The tangent at the last waypoint is parallel to the vector from the second-to-last to the last waypoint.
+      // This provides a natural continuation of the final approach.
+      const finalTangentialBearing = getBearing(previousWaypoint, lastWaypoint);
+
       trajectoryLegs.push({
         id: lastWaypoint.id,
         start: lastWaypoint,
         end: lastWaypoint,
         distance: 0,
         curveDistance: 0,
-        bearing: lastLeg ? lastLeg.bearing : 0,
+        bearing: finalTangentialBearing,
         command: NavigationCommand.END,
         turnAngle: 0,
         turnRadiusViolation: false,
