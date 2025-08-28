@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppSettings, Ship } from '../types';
-import { MAP_TILE_LAYERS } from '../App';
+import { MAP_TILE_LAYERS } from '../constants';
 import { CloseIcon, SettingsIcon } from './Icons';
 
 interface SettingsModalProps {

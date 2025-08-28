@@ -1,38 +1,15 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AnimationState, NavigationCommand, PropulsionDirection, AppSettings, MapTileLayer } from './types';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AppSettings, PropulsionDirection } from './types';
 import Controls from './components/Controls';
 import PlanningCanvas from './components/PlanningCanvas';
 import TrajectoryInfo from './components/TrajectoryInfo';
 import SettingsModal from './components/SettingsModal';
-import { useTrajectoryCalculations, getPointOnCatmullRom, getHeadingOnCatmullRom } from './hooks/useTrajectoryCalculations';
-import { GithubIcon, ChevronDownIcon, SettingsIcon, ListIcon } from './components/Icons';
+import { useTrajectoryCalculations } from './hooks/useTrajectoryCalculations';
+import { useAnimation } from './hooks/useAnimation';
+import { GithubIcon, SettingsIcon, ListIcon } from './components/Icons';
+import { AccordionSection } from './components/Accordion';
+import { MAP_TILE_LAYERS } from './constants';
 
-const AccordionSection: React.FC<{ title: string; icon: React.ReactNode; isOpen: boolean; onToggle: () => void; children: React.ReactNode; className?: string; }> = ({ title, icon, isOpen, onToggle, children, className = '' }) => (
-    // This is now a flex container that can fill height
-    <div className={`bg-gray-900/70 rounded-lg overflow-hidden border border-gray-700/50 flex flex-col ${className}`}>
-      <button onClick={onToggle} className="w-full flex justify-between items-center p-4 bg-gray-800/50 hover:bg-gray-700/50 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 flex-shrink-0">
-        <div className="flex items-center space-x-3">
-          {icon}
-          <h2 className="text-md font-semibold text-cyan-400">{title}</h2>
-        </div>
-        <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-      {/* This div will grow and handles the animation using grid-template-rows */}
-      <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'} flex-1 min-h-0`}>
-        <div className="overflow-y-auto"> {/* This inner div provides the scrolling */}
-          <div className="p-4 border-t border-gray-700/50">
-            {children}
-          </div>
-        </div>
-      </div>
-    </div>
-);
-
-export const MAP_TILE_LAYERS: MapTileLayer[] = [
-  { id: 'osm', name: 'OpenStreetMap', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' },
-  { id: 'satellite', name: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community' },
-  { id: 'dark', name: 'Dark Matter', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>' },
-];
 
 const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>({
@@ -53,120 +30,21 @@ const App: React.FC = () => {
     plan: true,
   });
   const [hoveredLegId, setHoveredLegId] = useState<number | null>(null);
-
-  // Animation State
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [animationState, setAnimationState] = useState<AnimationState | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-
-  const animationFrameId = useRef<number | null>(null);
-  const playbackSpeedRef = useRef(playbackSpeed);
-  playbackSpeedRef.current = playbackSpeed;
-  const animationData = useRef({ lastTimestamp: 0, scaledElapsed: 0 });
   
   const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship, settings.pivotDuration);
+  const { isAnimating, animationState, toggleAnimation } = useAnimation(trajectoryLegs, waypoints, playbackSpeed);
+  
   const selectedMapLayer = MAP_TILE_LAYERS.find(l => l.id === settings.mapTileLayerId) || MAP_TILE_LAYERS[0];
 
-
-  const calculateAnimationState = useCallback((progress: number, totalDuration: number): AnimationState | null => {
-      const currentTime = progress * totalDuration;
-      let accumulatedTime = 0;
-
-      for (let i = 0; i < trajectoryLegs.length; i++) {
-          const leg = trajectoryLegs[i];
-          if (leg.command === NavigationCommand.END) continue;
-          
-          const legEndTime = accumulatedTime + leg.time;
-
-          if (currentTime <= legEndTime || i === trajectoryLegs.length - 2 /* Last actual leg */) {
-              const timeIntoLeg = currentTime - accumulatedTime;
-
-              // Handle pivoting phase
-              if (timeIntoLeg < leg.pivotTime) {
-                  const pivotProgress = leg.pivotTime > 0 ? timeIntoLeg / leg.pivotTime : 1;
-                  const prevLeg = i > 0 ? trajectoryLegs[i-1] : null;
-                  const startPivotHeading = prevLeg ? prevLeg.endHeading : leg.startHeading;
-                  const endPivotHeading = leg.startHeading;
-                  
-                  let angleDiff = endPivotHeading - startPivotHeading;
-                  if (angleDiff > 180) angleDiff -= 360;
-                  if (angleDiff < -180) angleDiff += 360;
-
-                  const heading = startPivotHeading + angleDiff * pivotProgress;
-                  return { position: leg.start, heading, speed: 0 };
-              }
-              
-              // Handle movement phase
-              const moveTime = leg.time - leg.pivotTime;
-              const timeIntoMove = timeIntoLeg - leg.pivotTime;
-              const legProgress = moveTime > 0 ? timeIntoMove / moveTime : 1;
-              
-              const prevPropulsion = waypoints[i-1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
-              const p0 = (i > 0 && leg.propulsion === prevPropulsion) ? waypoints[i-1] : waypoints[i];
-              const p1 = waypoints[i];
-              const p2 = waypoints[i+1];
-              const nextPropulsion = waypoints[i+1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
-              const p3 = (waypoints[i+2] && nextPropulsion === leg.propulsion) ? waypoints[i+2] : waypoints[i+1];
-              
-              const position = getPointOnCatmullRom(legProgress, p0, p1, p2, p3);
-              let heading = getHeadingOnCatmullRom(legProgress, p0, p1, p2, p3);
-              if (leg.propulsion === PropulsionDirection.ASTERN) {
-                  heading = (heading + 180) % 360;
-              }
-              
-              return { position, heading, speed: leg.speed };
-          }
-          accumulatedTime = legEndTime;
-      }
-      // Fallback for the very end
-      const lastLeg = trajectoryLegs[trajectoryLegs.length-2];
-      if (lastLeg) {
-          return { position: lastLeg.end, heading: lastLeg.endHeading, speed: 0 };
-      }
-      return null;
-  }, [trajectoryLegs, waypoints]);
-
-  const handleAnimateToggle = useCallback(() => {
-    if (isAnimating) {
-        if (animationFrameId.current) {
-            cancelAnimationFrame(animationFrameId.current);
-        }
-        setIsAnimating(false);
-        setAnimationState(null);
-    } else {
-        const totalDuration = trajectoryLegs.reduce((sum, leg) => sum + leg.time, 0);
-        if (totalDuration === 0) return;
-
-        setIsAnimating(true);
-        animationData.current = { lastTimestamp: 0, scaledElapsed: 0 };
-        
-        const animate = (timestamp: number) => {
-            if (!animationData.current.lastTimestamp) {
-                animationData.current.lastTimestamp = timestamp;
-            }
-            const delta = (timestamp - animationData.current.lastTimestamp) / 1000;
-            animationData.current.lastTimestamp = timestamp;
-
-            animationData.current.scaledElapsed += delta * playbackSpeedRef.current;
-            
-            const progress = Math.min(animationData.current.scaledElapsed / totalDuration, 1);
-            
-            const newState = calculateAnimationState(progress, totalDuration);
-            if(newState) {
-                setAnimationState(newState);
-            }
-
-            if (progress < 1) {
-                animationFrameId.current = requestAnimationFrame(animate);
-            } else {
-                setIsAnimating(false);
-                // Keep final state for a moment before clearing
-                setTimeout(() => setAnimationState(null), 1000);
-            }
-        };
-        animationFrameId.current = requestAnimationFrame(animate);
+  useEffect(() => {
+    // When settings change the default ship, update the current ship if it's still the same as the old default.
+    // This avoids overwriting user's temporary changes to the current ship.
+    const oldDefaultShip = settings.defaultShip;
+    if (ship.length === oldDefaultShip.length && ship.beam === oldDefaultShip.beam && ship.turningRadius === oldDefaultShip.turningRadius) {
+      setShip(settings.defaultShip);
     }
-  }, [isAnimating, trajectoryLegs, calculateAnimationState]);
+  }, [settings.defaultShip]);
   
   const handleAddWaypoint = useCallback((point: GeoPoint) => {
     const newWaypoint: Waypoint = {
@@ -201,11 +79,12 @@ const App: React.FC = () => {
   }, []);
 
   const handleClear = useCallback(() => {
+    if (isAnimating) toggleAnimation(); // Stop animation before clearing
     setWaypoints([]);
     setShip(settings.defaultShip);
     setIsPlotting(false);
     setIsMeasuring(false);
-  }, [settings.defaultShip]);
+  }, [settings.defaultShip, isAnimating, toggleAnimation]);
 
   const handleExportPlan = useCallback(() => {
     const plan: SavedPlan = { waypoints, ship };
@@ -229,6 +108,7 @@ const App: React.FC = () => {
         const plan: SavedPlan = JSON.parse(text);
 
         if (plan.waypoints && plan.ship) {
+          if (isAnimating) toggleAnimation(); // Stop animation
           setWaypoints(plan.waypoints);
           setShip({ ...settings.defaultShip, ...plan.ship });
           setZoomToFitTrigger(c => c + 1);
@@ -243,7 +123,7 @@ const App: React.FC = () => {
       }
     };
     reader.readAsText(file);
-  }, [settings.defaultShip]);
+  }, [settings.defaultShip, isAnimating, toggleAnimation]);
 
   const handleToggleMeasure = useCallback(() => {
     if (!isMeasuring) setIsPlotting(false);
@@ -265,7 +145,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-900 text-gray-200 font-sans">
+    <div className="flex flex-col h-screen font-sans">
       <header className="bg-gray-800 shadow-lg z-20 p-2">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-xl font-bold text-cyan-400">Harbor Ship Trajectory Planner</h1>
@@ -297,7 +177,7 @@ const App: React.FC = () => {
               onToggleMeasure={handleToggleMeasure}
               isPlotting={isPlotting}
               onTogglePlotting={handleTogglePlotting}
-              onAnimateToggle={handleAnimateToggle}
+              onAnimateToggle={toggleAnimation}
               isAnimating={isAnimating}
               hasPlan={waypoints.length > 1}
               onResetShipToDefaults={() => setShip(settings.defaultShip)}
