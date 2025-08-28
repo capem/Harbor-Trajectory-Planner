@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AnimationState, NavigationCommand } from './types';
+import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AnimationState, NavigationCommand, PropulsionDirection } from './types';
 import Controls from './components/Controls';
 import PlanningCanvas from './components/PlanningCanvas';
 import TrajectoryInfo from './components/TrajectoryInfo';
@@ -55,26 +55,53 @@ const App: React.FC = () => {
       for (let i = 0; i < trajectoryLegs.length; i++) {
           const leg = trajectoryLegs[i];
           if (leg.command === NavigationCommand.END) continue;
+          
+          const legEndTime = accumulatedTime + leg.time;
 
-          if (currentTime <= accumulatedTime + leg.time || i === trajectoryLegs.length - 2 /* Last actual leg */) {
-              const legProgress = leg.time > 0 ? (currentTime - accumulatedTime) / leg.time : 1;
+          if (currentTime <= legEndTime || i === trajectoryLegs.length - 2 /* Last actual leg */) {
+              const timeIntoLeg = currentTime - accumulatedTime;
+
+              // Handle pivoting phase
+              if (timeIntoLeg < leg.pivotTime) {
+                  const pivotProgress = leg.pivotTime > 0 ? timeIntoLeg / leg.pivotTime : 1;
+                  const prevLeg = i > 0 ? trajectoryLegs[i-1] : null;
+                  const startPivotHeading = prevLeg ? prevLeg.endHeading : leg.startHeading;
+                  const endPivotHeading = leg.startHeading;
+                  
+                  let angleDiff = endPivotHeading - startPivotHeading;
+                  if (angleDiff > 180) angleDiff -= 360;
+                  if (angleDiff < -180) angleDiff += 360;
+
+                  const heading = startPivotHeading + angleDiff * pivotProgress;
+                  return { position: leg.start, heading };
+              }
               
-              const p0 = waypoints[i - 1] || waypoints[i];
+              // Handle movement phase
+              const moveTime = leg.time - leg.pivotTime;
+              const timeIntoMove = timeIntoLeg - leg.pivotTime;
+              const legProgress = moveTime > 0 ? timeIntoMove / moveTime : 1;
+              
+              const prevPropulsion = waypoints[i-1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
+              const p0 = (i > 0 && leg.propulsion === prevPropulsion) ? waypoints[i-1] : waypoints[i];
               const p1 = waypoints[i];
-              const p2 = waypoints[i + 1];
-              const p3 = waypoints[i + 2] || waypoints[i + 1];
-
+              const p2 = waypoints[i+1];
+              const nextPropulsion = waypoints[i+1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
+              const p3 = (waypoints[i+2] && nextPropulsion === leg.propulsion) ? waypoints[i+2] : waypoints[i+1];
+              
               const position = getPointOnCatmullRom(legProgress, p0, p1, p2, p3);
-              const heading = getHeadingOnCatmullRom(legProgress, p0, p1, p2, p3);
+              let heading = getHeadingOnCatmullRom(legProgress, p0, p1, p2, p3);
+              if (leg.propulsion === PropulsionDirection.ASTERN) {
+                  heading = (heading + 180) % 360;
+              }
               
               return { position, heading };
           }
-          accumulatedTime += leg.time;
+          accumulatedTime = legEndTime;
       }
       // Fallback for the very end
-      const lastLeg = trajectoryLegs.find(l => l.command !== NavigationCommand.END);
+      const lastLeg = trajectoryLegs[trajectoryLegs.length-2];
       if (lastLeg) {
-          return { position: lastLeg.end, heading: lastLeg.heading };
+          return { position: lastLeg.end, heading: lastLeg.endHeading };
       }
       return null;
   }, [trajectoryLegs, waypoints]);
@@ -124,6 +151,7 @@ const App: React.FC = () => {
       ...point,
       id: Date.now(),
       speedToNext: 5.0, // Default speed in knots
+      propulsionDirection: PropulsionDirection.FORWARD,
     };
     setWaypoints(prev => [...prev, newWaypoint]);
   }, []);
@@ -141,6 +169,12 @@ const App: React.FC = () => {
   const handleSpeedChange = useCallback((waypointId: number, speed: number) => {
     setWaypoints(prev =>
       prev.map(wp => (wp.id === waypointId ? { ...wp, speedToNext: speed } : wp))
+    );
+  }, []);
+
+  const handlePropulsionChange = useCallback((waypointId: number, propulsion: PropulsionDirection) => {
+    setWaypoints(prev => 
+      prev.map(wp => (wp.id === waypointId ? { ...wp, propulsionDirection: propulsion } : wp))
     );
   }, []);
 
@@ -243,7 +277,7 @@ const App: React.FC = () => {
                 isOpen={openSections.plan}
                 onToggle={() => toggleSection('plan')}
             >
-              <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} onLegHover={setHoveredLegId} onSpeedChange={handleSpeedChange} />
+              <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} onLegHover={setHoveredLegId} onSpeedChange={handleSpeedChange} onPropulsionChange={handlePropulsionChange}/>
             </AccordionSection>
           </div>
         </aside>

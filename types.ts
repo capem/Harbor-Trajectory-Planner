@@ -3,9 +3,15 @@ export interface GeoPoint {
   lng: number;
 }
 
+export enum PropulsionDirection {
+  FORWARD = 'Forward',
+  ASTERN = 'Astern',
+}
+
 export interface Waypoint extends GeoPoint {
   id: number;
   speedToNext?: number; // Speed in knots for the leg starting at this waypoint
+  propulsionDirection?: PropulsionDirection;
 }
 
 export interface Ship {
@@ -29,12 +35,15 @@ export interface TrajectoryLeg {
   distance: number; // Straight line distance
   curveDistance: number;
   course: number; // Straight-line bearing between waypoints
-  heading: number; // Tangential bearing for ship orientation
+  startHeading: number; // Tangential bearing for ship orientation at the start
+  endHeading: number; // Tangential bearing for ship orientation at the end
   command: NavigationCommand;
   turnAngle: number;
   turnRadiusViolation?: boolean;
   speed: number; // Speed in knots for this leg
-  time: number; // Time in seconds for this leg
+  time: number; // Time in seconds for this leg (includes pivot time)
+  pivotTime: number; // Time in seconds spent pivoting at the start of the leg
+  propulsion: PropulsionDirection;
 }
 
 export interface SavedPlan {

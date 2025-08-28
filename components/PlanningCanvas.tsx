@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState } from '../types';
+import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState, PropulsionDirection } from '../types';
 
 // Since we don't have @types/leaflet installed from npm, we declare a global L
 declare const L: any;
@@ -264,7 +264,22 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
         waypoints.slice(0, -1).forEach((wp, i) => {
             const leg = legs[i]; if (!leg) return;
             const isHovered = leg.id === hoveredLegId;
-            const p0 = waypoints[i - 1] || waypoints[i], p1 = waypoints[i], p2 = waypoints[i + 1], p3 = waypoints[i + 2] || waypoints[i + 1];
+
+            // Replicate control point logic from useTrajectoryCalculations for accurate visualization
+            const start = waypoints[i];
+            const end = waypoints[i + 1];
+            
+            const propulsion = start.propulsionDirection ?? PropulsionDirection.FORWARD;
+            const prevPropulsion = waypoints[i-1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
+            const isPivotingAtStart = i > 0 && propulsion !== prevPropulsion;
+            
+            const nextPropulsion = end.propulsionDirection ?? PropulsionDirection.FORWARD;
+            
+            const p0 = isPivotingAtStart ? start : (waypoints[i - 1] || start);
+            const p1 = start;
+            const p2 = end;
+            const p3 = (waypoints[i+2] && nextPropulsion === propulsion) ? waypoints[i+2] : end;
+            
             const interpolator = (t: number) => ({ lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat), lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng) });
             const segmentPoints = Array.from({ length: 15 }, (_, i) => i / 15).map(interpolator);
             segmentPoints.push(p2);
@@ -278,15 +293,25 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     
     if (legs.length > 0 && !animationState) {
         const shipPolygons = legs.map((leg) => {
+            if (leg.command === NavigationCommand.END) return null;
+            
             let color: string;
             switch (leg.command) {
-            case NavigationCommand.START: color = '#10B981'; break;
-            case NavigationCommand.END: color = '#FBBF24'; break;
-            default: color = '#3B82F6'; break;
+              case NavigationCommand.START:
+              case NavigationCommand.STARBOARD:
+                color = '#16a34a'; // Green for start and starboard turns
+                break;
+              case NavigationCommand.PORT:
+                color = '#dc2626'; // Red for port turns
+                break;
+              case NavigationCommand.STRAIGHT:
+              default:
+                color = '#2563eb'; // Blue for straight
+                break;
             }
-            const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, leg.heading);
+            const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, leg.startHeading);
             return L.polygon(shipCoords.map(p => [p.lat, p.lng]), { color, fillColor: color, fillOpacity: 0.5, weight: 1, interactive: false, zIndexOffset: -1000 }).addTo(map);
-        });
+        }).filter(Boolean);
         layersRef.current.push(...shipPolygons);
     }
   }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId, animationState]);

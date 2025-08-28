@@ -1,12 +1,13 @@
 import React from 'react';
-import { TrajectoryLeg, NavigationCommand } from '../types';
-import { PortIcon, StarboardIcon, StraightIcon, StartIcon, EndIcon, TrashIcon, WarningIcon, SpeedIcon, TimeIcon } from './Icons';
+import { TrajectoryLeg, NavigationCommand, PropulsionDirection } from '../types';
+import { PortIcon, StarboardIcon, StraightIcon, StartIcon, EndIcon, TrashIcon, WarningIcon, SpeedIcon, TimeIcon, ForwardArrowIcon, AsternArrowIcon } from './Icons';
 
 interface TrajectoryInfoProps {
   legs: TrajectoryLeg[];
   onDeleteWaypoint: (id: number) => void;
   onLegHover: (id: number | null) => void;
   onSpeedChange: (waypointId: number, speed: number) => void;
+  onPropulsionChange: (waypointId: number, propulsion: PropulsionDirection) => void;
 }
 
 const CommandDisplay: React.FC<{ command: NavigationCommand; angle: number; violation: boolean; }> = ({ command, angle, violation }) => {
@@ -52,7 +53,7 @@ function formatTime(totalSeconds: number): string {
 }
 
 
-const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint, onLegHover, onSpeedChange }) => {
+const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint, onLegHover, onSpeedChange, onPropulsionChange }) => {
   const actualLegs = legs.filter(leg => leg.command !== NavigationCommand.END);
   const totalLineDistance = actualLegs.reduce((sum, leg) => sum + leg.distance, 0);
   const totalCurveDistance = actualLegs.reduce((sum, leg) => sum + leg.curveDistance, 0);
@@ -96,9 +97,9 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
                             <span>Course (Bearing)</span>
                             <span className="font-mono text-gray-200">{leg.course.toFixed(1)}°</span>
                         </div>
-                        <div className="flex justify-between items-center">
-                            <span>Initial Heading</span>
-                            <span className="font-mono text-gray-200">{leg.heading.toFixed(1)}°</span>
+                         <div className="flex justify-between items-center">
+                            <span>Headings</span>
+                            <span className="font-mono text-gray-200">{leg.startHeading.toFixed(1)}° → {leg.endHeading.toFixed(1)}°</span>
                         </div>
                     </div>
                     <div className="mt-2 pt-2 border-t border-gray-600/50 flex items-center justify-between">
@@ -117,9 +118,33 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
                           <span className="text-gray-400 text-sm">kn</span>
                       </div>
                       <div className="flex items-center space-x-2 text-sm">
+                          {leg.pivotTime > 0 && <span className="text-amber-400 font-mono text-xs">(+{leg.pivotTime}s pivot)</span>}
                           <TimeIcon className="w-5 h-5 text-cyan-400" />
                           <span className="font-mono text-gray-200">{formatTime(leg.time)}</span>
                       </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                        <span className="text-sm text-gray-400">Propulsion:</span>
+                        <div className="flex rounded-md bg-gray-900 border border-gray-600">
+                            <button
+                                onClick={() => onPropulsionChange(leg.id, PropulsionDirection.FORWARD)}
+                                className={`px-3 py-1 rounded-l-md text-sm flex items-center space-x-2 transition-colors ${leg.propulsion === PropulsionDirection.FORWARD ? 'bg-cyan-600 text-white' : 'hover:bg-gray-700'}`}
+                                aria-pressed={leg.propulsion === PropulsionDirection.FORWARD}
+                                title="Set forward propulsion for this leg"
+                            >
+                                <ForwardArrowIcon className="w-4 h-4" />
+                                <span>Forward</span>
+                            </button>
+                            <button
+                                onClick={() => onPropulsionChange(leg.id, PropulsionDirection.ASTERN)}
+                                className={`px-3 py-1 rounded-r-md text-sm flex items-center space-x-2 transition-colors ${leg.propulsion === PropulsionDirection.ASTERN ? 'bg-rose-600 text-white' : 'hover:bg-gray-700'}`}
+                                aria-pressed={leg.propulsion === PropulsionDirection.ASTERN}
+                                title="Set astern (backward) propulsion for this leg"
+                            >
+                                <AsternArrowIcon className="w-4 h-4" />
+                                <span>Astern</span>
+                            </button>
+                        </div>
                     </div>
                   </>
                 )}

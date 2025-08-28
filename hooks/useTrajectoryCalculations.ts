@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { Waypoint, TrajectoryLeg, NavigationCommand, GeoPoint, Ship } from '../types';
+import { Waypoint, TrajectoryLeg, NavigationCommand, GeoPoint, Ship, PropulsionDirection } from '../types';
 
 const TURN_THRESHOLD = 5; // degrees
+const PIVOT_DURATION_SECONDS = 30; // Time for the ship to turn in place
 
 // --- GEO HELPER FUNCTIONS ---
 const R = 6371e3; // Earth's radius in metres
@@ -140,26 +141,37 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
     for (let i = 0; i < waypoints.length - 1; i++) {
       const start = waypoints[i];
       const end = waypoints[i + 1];
+      const propulsion = start.propulsionDirection ?? PropulsionDirection.FORWARD;
+      
+      const prevPropulsion = waypoints[i-1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
+      const pivotTime = (i > 0 && propulsion !== prevPropulsion) ? PIVOT_DURATION_SECONDS : 0;
 
       // --- Course (Straight Leg Properties) ---
       const distance = getDistance(start, end);
       const course = getBearing(start, end);
 
-      // --- Curve Properties ---
-      const p0 = waypoints[i - 1] || start;
+      // --- Curve Properties & Headings ---
+      // If pivoting, the curve starts fresh from the current point.
+      const p0 = (i > 0 && pivotTime === 0) ? waypoints[i - 1] : start;
       const p1 = start;
       const p2 = end;
-      const p3 = waypoints[i + 2] || end;
+      // If the next leg involves a pivot, this leg's curve ends cleanly at the waypoint.
+      const nextPropulsion = waypoints[i+1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
+      const p3 = (waypoints[i+2] && nextPropulsion === propulsion) ? waypoints[i+2] : end;
+
       const curveDistance = calculateCurveLength(p0, p1, p2, p3);
 
-      // --- Speed and Time ---
-      const speedKnots = start.speedToNext ?? 5.0; // Default to 5 knots if not set
-      const speedMps = speedKnots * 0.514444; // 1 knot = 0.514444 m/s
-      const timeSeconds = speedMps > 0 ? curveDistance / speedMps : 0;
+      const tangentAtStart = getBearing(p0, p2);
+      const tangentAtEnd = getBearing(p1, p3);
 
-      // --- Heading (Tangential Bearing for ship orientation) ---
-      // The tangent at `start` (p1) is parallel to the vector from p0 to p2.
-      const heading = getBearing(p0, p2);
+      const startHeading = propulsion === PropulsionDirection.ASTERN ? (tangentAtStart + 180) % 360 : tangentAtStart;
+      const endHeading = propulsion === PropulsionDirection.ASTERN ? (tangentAtEnd + 180) % 360 : tangentAtEnd;
+
+      // --- Speed and Time ---
+      const speedKnots = start.speedToNext ?? 5.0;
+      const speedMps = speedKnots * 0.514444; // 1 knot = 0.514444 m/s
+      const moveTime = speedMps > 0 ? curveDistance / speedMps : 0;
+      const totalTime = moveTime + pivotTime;
 
       // --- Command, Turn Angle, and Violation ---
       let command: NavigationCommand;
@@ -176,19 +188,17 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
         if (angle < -180) angle += 360;
         turnAngle = angle;
 
-        if (turnAngle > TURN_THRESHOLD) {
-          command = NavigationCommand.PORT;
-        } else if (turnAngle < -TURN_THRESHOLD) {
-          command = NavigationCommand.STARBOARD;
+        if (Math.abs(turnAngle) > TURN_THRESHOLD) {
+          command = turnAngle > 0 ? NavigationCommand.PORT : NavigationCommand.STARBOARD;
         } else {
           command = NavigationCommand.STRAIGHT;
         }
       }
 
       // --- Turn Radius Violation ---
+      // A violation can only occur on a continuous turn, not when pivoting in place.
       let turnRadiusViolation = false;
-      // Only check for violation on actual turns (not the start or straight segments)
-      if (command === NavigationCommand.PORT || command === NavigationCommand.STARBOARD) {
+      if ((command === NavigationCommand.PORT || command === NavigationCommand.STARBOARD) && pivotTime === 0) {
         const turnRadiusMeters = calculateTurnRadius(p0, p1, p2, p3);
         turnRadiusViolation = turnRadiusMeters < ship.turningRadius;
       }
@@ -197,15 +207,18 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
         id: start.id,
         start,
         end,
-        distance: distance,
+        distance,
         curveDistance,
-        course: course,
-        heading: heading,
+        course,
+        startHeading,
+        endHeading,
         command,
         turnAngle,
         turnRadiusViolation,
         speed: speedKnots,
-        time: timeSeconds,
+        time: totalTime,
+        pivotTime,
+        propulsion,
       });
 
       previousCourse = course;
@@ -214,24 +227,24 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
     // Add a final entry for the end of the plan.
     if (waypoints.length > 0) {
       const lastWaypoint = waypoints[waypoints.length - 1];
-      const previousWaypoint = waypoints.length > 1 ? waypoints[waypoints.length - 2] : null;
+      const finalLeg = trajectoryLegs[trajectoryLegs.length-1];
       
-      // At the final point, the heading should align with the course of the final approach.
-      const finalCourseAndHeading = previousWaypoint ? getBearing(previousWaypoint, lastWaypoint) : 0;
-
       trajectoryLegs.push({
         id: lastWaypoint.id,
         start: lastWaypoint,
         end: lastWaypoint,
         distance: 0,
         curveDistance: 0,
-        course: finalCourseAndHeading,
-        heading: finalCourseAndHeading,
+        course: finalLeg ? finalLeg.course : 0,
+        startHeading: finalLeg ? finalLeg.endHeading : 0,
+        endHeading: finalLeg ? finalLeg.endHeading : 0,
         command: NavigationCommand.END,
         turnAngle: 0,
         turnRadiusViolation: false,
         speed: 0,
         time: 0,
+        pivotTime: 0,
+        propulsion: finalLeg ? finalLeg.propulsion : PropulsionDirection.FORWARD,
       });
     }
 
