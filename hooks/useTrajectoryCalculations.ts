@@ -240,7 +240,9 @@ export function calculateTrajectory(waypoints: Waypoint[], ship: Ship, pivotDura
               const totalDriftSpeedMps = Math.sqrt(totalDriftVx * totalDriftVx + totalDriftVy * totalDriftVy);
               const totalDriftAngleRad = Math.atan2(totalDriftVx, totalDriftVy);
               
-              const angleDiff = totalDriftAngleRad - shipAngleRad;
+              // Corrected formula: sin(CCA) = (DriftSpeed / ShipSpeed) * sin(CourseAngle - DriftAngle)
+              const angleDiff = shipAngleRad - totalDriftAngleRad;
+              
               const sineOfCCA = (totalDriftSpeedMps / speedMps) * Math.sin(angleDiff);
               
               if (Math.abs(sineOfCCA) <= 1) {

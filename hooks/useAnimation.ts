@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
-import { TrajectoryLeg, Waypoint, AnimationState, NavigationCommand, PropulsionDirection } from '../types';
+import { useState, useCallback, useRef, useMemo } from 'react';
+import { TrajectoryLeg, Waypoint, AnimationState, NavigationCommand, PropulsionDirection, GeoPoint } from '../types';
 import { getPointOnCatmullRom, getHeadingOnCatmullRom } from './useTrajectoryCalculations';
 
 export const useAnimation = (trajectoryLegs: TrajectoryLeg[], waypoints: Waypoint[], playbackSpeed: number) => {
@@ -10,6 +10,24 @@ export const useAnimation = (trajectoryLegs: TrajectoryLeg[], waypoints: Waypoin
     const playbackSpeedRef = useRef(playbackSpeed);
     playbackSpeedRef.current = playbackSpeed;
     const animationData = useRef({ lastTimestamp: 0, scaledElapsed: 0 });
+
+    const predictedPathPoints = useMemo<GeoPoint[]>(() => {
+        if (!waypoints.length || !trajectoryLegs.some(l => l.predictedEnd)) {
+            return waypoints;
+        }
+
+        const predictedEnds = trajectoryLegs
+            .map(l => l.predictedEnd)
+            .filter((p): p is GeoPoint => p !== undefined);
+        
+        // There should be one predictedEnd for each leg except the final dummy leg.
+        if (waypoints.length > 0 && predictedEnds.length === waypoints.length - 1) {
+            return [waypoints[0], ...predictedEnds];
+        }
+
+        return waypoints; // Fallback
+    }, [trajectoryLegs, waypoints]);
+
 
     const calculateAnimationState = useCallback((progress: number, totalDuration: number): AnimationState | null => {
         const currentTime = progress * totalDuration;
@@ -36,7 +54,10 @@ export const useAnimation = (trajectoryLegs: TrajectoryLeg[], waypoints: Waypoin
                     if (angleDiff < -180) angleDiff += 360;
 
                     const heading = startPivotHeading + angleDiff * pivotProgress;
-                    return { position: leg.start, heading, speed: 0 };
+
+                    // Pivot happens at the predicted location of the waypoint.
+                    const pivotPosition = predictedPathPoints[i];
+                    return { position: pivotPosition, heading, speed: 0 };
                 }
                 
                 // Handle movement phase
@@ -45,17 +66,29 @@ export const useAnimation = (trajectoryLegs: TrajectoryLeg[], waypoints: Waypoin
                 const legProgress = moveTime > 0 ? timeIntoMove / moveTime : 1;
                 
                 const prevPropulsion = waypoints[i-1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
-                const p0 = (i > 0 && leg.propulsion === prevPropulsion) ? waypoints[i-1] : waypoints[i];
-                const p1 = waypoints[i];
-                const p2 = waypoints[i+1];
                 const nextPropulsion = waypoints[i+1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
-                const p3 = (waypoints[i+2] && nextPropulsion === leg.propulsion) ? waypoints[i+2] : waypoints[i+1];
+
+                // --- POSITION CALCULATION (uses predicted path) ---
+                const pos_p0 = (i > 0 && leg.propulsion === prevPropulsion) ? predictedPathPoints[i-1] : predictedPathPoints[i];
+                const pos_p1 = predictedPathPoints[i];
+                const pos_p2 = predictedPathPoints[i+1];
+                const pos_p3 = (predictedPathPoints[i+2] && nextPropulsion === leg.propulsion) ? predictedPathPoints[i+2] : predictedPathPoints[i+1];
+                const position = getPointOnCatmullRom(legProgress, pos_p0, pos_p1, pos_p2, pos_p3);
                 
-                const position = getPointOnCatmullRom(legProgress, p0, p1, p2, p3);
-                let heading = getHeadingOnCatmullRom(legProgress, p0, p1, p2, p3);
+                // --- HEADING CALCULATION (uses intended path + correction) ---
+                const head_p0 = (i > 0 && leg.propulsion === prevPropulsion) ? waypoints[i-1] : waypoints[i];
+                const head_p1 = waypoints[i];
+                const head_p2 = waypoints[i+1];
+                const head_p3 = (waypoints[i+2] && nextPropulsion === leg.propulsion) ? waypoints[i+2] : waypoints[i+1];
+
+                let intendedHeading = getHeadingOnCatmullRom(legProgress, head_p0, head_p1, head_p2, head_p3);
                 if (leg.propulsion === PropulsionDirection.ASTERN) {
-                    heading = (heading + 180) % 360;
+                    intendedHeading = (intendedHeading + 180) % 360;
                 }
+                
+                // Apply course correction angle for "crabbing"
+                const correction = (leg.courseCorrectionAngle && !isNaN(leg.courseCorrectionAngle)) ? leg.courseCorrectionAngle : 0;
+                const heading = (intendedHeading + correction + 360) % 360;
                 
                 return { position, heading, speed: leg.speed };
             }
@@ -64,10 +97,13 @@ export const useAnimation = (trajectoryLegs: TrajectoryLeg[], waypoints: Waypoin
         // Fallback for the very end
         const lastLeg = trajectoryLegs[trajectoryLegs.length-2];
         if (lastLeg) {
-            return { position: lastLeg.end, heading: lastLeg.endHeading, speed: 0 };
+            const finalPosition = predictedPathPoints[predictedPathPoints.length - 1];
+            const correction = (lastLeg.courseCorrectionAngle && !isNaN(lastLeg.courseCorrectionAngle)) ? lastLeg.courseCorrectionAngle : 0;
+            const finalHeading = (lastLeg.endHeading + correction + 360) % 360;
+            return { position: finalPosition, heading: finalHeading, speed: 0 };
         }
         return null;
-    }, [trajectoryLegs, waypoints]);
+    }, [trajectoryLegs, waypoints, predictedPathPoints]);
 
     const toggleAnimation = useCallback(() => {
         if (isAnimating) {
