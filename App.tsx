@@ -52,6 +52,19 @@ const App: React.FC = () => {
       setShip(settings.defaultShip);
     }
   }, [settings.defaultShip]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsPlotting(false);
+        setIsMeasuring(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
   
   const handleAddWaypoint = useCallback((point: GeoPoint) => {
     const newWaypoint: Waypoint = {
