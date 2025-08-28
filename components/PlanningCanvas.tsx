@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState, PropulsionDirection } from '../types';
+import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState, PropulsionDirection, MapTileLayer } from '../types';
 
 // Since we don't have @types/leaflet installed from npm, we declare a global L
 declare const L: any;
@@ -16,6 +16,7 @@ interface PlanningCanvasProps {
   isPlotting: boolean;
   hoveredLegId?: number | null;
   animationState: AnimationState | null;
+  mapTileLayer: MapTileLayer;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -107,10 +108,12 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
 
 const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ 
     waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, 
-    legs, zoomToFitTrigger, isMeasuring, isPlotting, hoveredLegId, animationState 
+    legs, zoomToFitTrigger, isMeasuring, isPlotting, hoveredLegId, animationState,
+    mapTileLayer
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
+  const tileLayerRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
   const animationShipRef = useRef<any>(null);
 
@@ -124,12 +127,23 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
   useEffect(() => {
     if (mapContainerRef.current && !mapRef.current) {
       const map = L.map(mapContainerRef.current).setView([33.6069, -7.6228], 14);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(map);
       mapRef.current = map;
     }
   }, [mapContainerRef]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    
+    if (tileLayerRef.current) {
+        map.removeLayer(tileLayerRef.current);
+    }
+    
+    tileLayerRef.current = L.tileLayer(mapTileLayer.url, {
+        attribution: mapTileLayer.attribution
+    }).addTo(map);
+
+  }, [mapTileLayer]);
 
   useEffect(() => {
     const map = mapRef.current;

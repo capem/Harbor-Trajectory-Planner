@@ -55,3 +55,17 @@ export interface AnimationState {
   position: GeoPoint;
   heading: number;
 }
+
+export interface MapTileLayer {
+  id: string;
+  name: string;
+  url: string;
+  attribution: string;
+}
+
+export interface AppSettings {
+  defaultShip: Ship;
+  defaultSpeed: number;
+  pivotDuration: number;
+  mapTileLayerId: string;
+}

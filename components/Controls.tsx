@@ -15,6 +15,7 @@ interface ControlsProps {
   onAnimateToggle: () => void;
   isAnimating: boolean;
   hasPlan: boolean;
+  onResetShipToDefaults: () => void;
 }
 
 const ControlInput: React.FC<{ label: string; value: number; onChange: (value: number) => void; unit: string }> = ({ label, value, onChange, unit }) => (
@@ -47,7 +48,7 @@ const ActionButton: React.FC<{ onClick: () => void; children: React.ReactNode; c
 const Controls: React.FC<ControlsProps> = ({ 
     ship, setShip, onClear, onImportPlan, onExportPlan, 
     isMeasuring, onToggleMeasure, isPlotting, onTogglePlotting,
-    onAnimateToggle, isAnimating, hasPlan
+    onAnimateToggle, isAnimating, hasPlan, onResetShipToDefaults
 }) => {
   const planFileInputRef = useRef<HTMLInputElement>(null);
   const disableActions = isAnimating;
@@ -67,7 +68,17 @@ const Controls: React.FC<ControlsProps> = ({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 border-b border-gray-700 pb-2 mb-4">Ship Configuration</h3>
+        <div className="flex justify-between items-center border-b border-gray-700 pb-2 mb-4">
+          <h3 className="text-sm font-semibold text-gray-300">Ship Configuration</h3>
+          <button 
+            onClick={onResetShipToDefaults}
+            className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline disabled:text-gray-500 disabled:no-underline disabled:cursor-not-allowed"
+            title="Reset the current ship's configuration to the saved defaults."
+            disabled={disableActions}
+          >
+            Reset to Defaults
+          </button>
+        </div>
         <div className="space-y-3">
           <ControlInput
             label="Ship Length"

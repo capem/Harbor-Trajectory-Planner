@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { Waypoint, TrajectoryLeg, NavigationCommand, GeoPoint, Ship, PropulsionDirection } from '../types';
 
 const TURN_THRESHOLD = 5; // degrees
-const PIVOT_DURATION_SECONDS = 30; // Time for the ship to turn in place
 
 // --- GEO HELPER FUNCTIONS ---
 const R = 6371e3; // Earth's radius in metres
@@ -129,7 +128,7 @@ function calculateTurnRadius(p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPo
 }
 
 
-export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): TrajectoryLeg[] => {
+export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship, pivotDuration: number): TrajectoryLeg[] => {
   return useMemo(() => {
     if (waypoints.length < 2) {
       return [];
@@ -144,7 +143,7 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
       const propulsion = start.propulsionDirection ?? PropulsionDirection.FORWARD;
       
       const prevPropulsion = waypoints[i-1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
-      const pivotTime = (i > 0 && propulsion !== prevPropulsion) ? PIVOT_DURATION_SECONDS : 0;
+      const pivotTime = (i > 0 && propulsion !== prevPropulsion) ? pivotDuration : 0;
 
       // --- Course (Straight Leg Properties) ---
       const distance = getDistance(start, end);
@@ -249,5 +248,5 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship): Tr
     }
 
     return trajectoryLegs;
-  }, [waypoints, ship]);
+  }, [waypoints, ship, pivotDuration]);
 };

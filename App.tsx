@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AnimationState, NavigationCommand, PropulsionDirection } from './types';
+import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AnimationState, NavigationCommand, PropulsionDirection, AppSettings, MapTileLayer } from './types';
 import Controls from './components/Controls';
 import PlanningCanvas from './components/PlanningCanvas';
 import TrajectoryInfo from './components/TrajectoryInfo';
+import SettingsModal from './components/SettingsModal';
 import { useTrajectoryCalculations, getPointOnCatmullRom, getHeadingOnCatmullRom } from './hooks/useTrajectoryCalculations';
 import { GithubIcon, ChevronDownIcon, SettingsIcon, ListIcon } from './components/Icons';
 
@@ -27,10 +28,23 @@ const AccordionSection: React.FC<{ title: string; icon: React.ReactNode; isOpen:
     </div>
 );
 
+export const MAP_TILE_LAYERS: MapTileLayer[] = [
+  { id: 'osm', name: 'OpenStreetMap', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' },
+  { id: 'satellite', name: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community' },
+  { id: 'dark', name: 'Dark Matter', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>' },
+];
 
 const App: React.FC = () => {
+  const [settings, setSettings] = useState<AppSettings>({
+    defaultShip: { length: 150, beam: 25, turningRadius: 300 },
+    defaultSpeed: 5.0,
+    pivotDuration: 30,
+    mapTileLayerId: 'osm',
+  });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
-  const [ship, setShip] = useState<Ship>({ length: 150, beam: 25, turningRadius: 300 });
+  const [ship, setShip] = useState<Ship>(settings.defaultShip);
   const [zoomToFitTrigger, setZoomToFitTrigger] = useState(0);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [isPlotting, setIsPlotting] = useState(false);
@@ -46,7 +60,9 @@ const App: React.FC = () => {
 
   const animationFrameId = useRef<number | null>(null);
   
-  const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship);
+  const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship, settings.pivotDuration);
+  const selectedMapLayer = MAP_TILE_LAYERS.find(l => l.id === settings.mapTileLayerId) || MAP_TILE_LAYERS[0];
+
 
   const calculateAnimationState = useCallback((progress: number, totalDuration: number) => {
       const currentTime = progress * totalDuration;
@@ -150,11 +166,11 @@ const App: React.FC = () => {
     const newWaypoint: Waypoint = {
       ...point,
       id: Date.now(),
-      speedToNext: 5.0, // Default speed in knots
+      speedToNext: settings.defaultSpeed,
       propulsionDirection: PropulsionDirection.FORWARD,
     };
     setWaypoints(prev => [...prev, newWaypoint]);
-  }, []);
+  }, [settings.defaultSpeed]);
 
   const handleUpdateWaypoint = useCallback((id: number, point: GeoPoint) => {
     setWaypoints(prev =>
@@ -180,9 +196,10 @@ const App: React.FC = () => {
 
   const handleClear = useCallback(() => {
     setWaypoints([]);
+    setShip(settings.defaultShip);
     setIsPlotting(false);
     setIsMeasuring(false);
-  }, []);
+  }, [settings.defaultShip]);
 
   const handleExportPlan = useCallback(() => {
     const plan: SavedPlan = { waypoints, ship };
@@ -207,7 +224,7 @@ const App: React.FC = () => {
 
         if (plan.waypoints && plan.ship) {
           setWaypoints(plan.waypoints);
-          setShip({ turningRadius: 300, ...plan.ship });
+          setShip({ ...settings.defaultShip, ...plan.ship });
           setZoomToFitTrigger(c => c + 1);
           setIsPlotting(false);
           setIsMeasuring(false);
@@ -220,7 +237,7 @@ const App: React.FC = () => {
       }
     };
     reader.readAsText(file);
-  }, []);
+  }, [settings.defaultShip]);
 
   const handleToggleMeasure = useCallback(() => {
     if (!isMeasuring) setIsPlotting(false);
@@ -236,18 +253,28 @@ const App: React.FC = () => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
+  const handleSaveSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    setIsSettingsOpen(false);
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-200 font-sans">
-      <header className="bg-gray-800 shadow-lg z-10 p-2">
+      <header className="bg-gray-800 shadow-lg z-20 p-2">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-xl font-bold text-cyan-400">Harbor Ship Trajectory Planner</h1>
-          <a href="https://github.com/google/aistudio-apps" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">
-            <GithubIcon className="w-6 h-6" />
-          </a>
+          <div className="flex items-center space-x-4">
+             <button onClick={() => setIsSettingsOpen(true)} className="text-gray-400 hover:text-white transition-colors" title="Open Settings">
+                <SettingsIcon className="w-6 h-6" />
+             </button>
+             <a href="https://github.com/google/aistudio-apps" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors" title="View on GitHub">
+                <GithubIcon className="w-6 h-6" />
+             </a>
+          </div>
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-1/4 min-w-[350px] max-w-[450px] bg-gray-800 p-4 flex flex-col space-y-4">
+        <aside className="w-1/4 min-w-[350px] max-w-[450px] bg-gray-800 p-4 flex flex-col space-y-4 z-10">
           <AccordionSection
               title="Settings & Actions"
               icon={<SettingsIcon className="w-5 h-5 text-cyan-400" />}
@@ -267,6 +294,7 @@ const App: React.FC = () => {
               onAnimateToggle={handleAnimateToggle}
               isAnimating={isAnimating}
               hasPlan={waypoints.length > 1}
+              onResetShipToDefaults={() => setShip(settings.defaultShip)}
             />
           </AccordionSection>
           <div className="flex-1 flex flex-col min-h-0">
@@ -294,9 +322,17 @@ const App: React.FC = () => {
             isPlotting={isPlotting}
             hoveredLegId={hoveredLegId}
             animationState={animationState}
+            mapTileLayer={selectedMapLayer}
           />
         </main>
       </div>
+       {isSettingsOpen && (
+        <SettingsModal 
+          currentSettings={settings}
+          onSave={handleSaveSettings}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 };
