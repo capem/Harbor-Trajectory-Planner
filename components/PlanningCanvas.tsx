@@ -116,6 +116,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
   const tileLayerRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
   const animationShipRef = useRef<any>(null);
+  const speedControlRef = useRef<any>(null);
 
   const measureLineRef = useRef<any>(null);
   const measureTooltipRef = useRef<any>(null);
@@ -128,6 +129,24 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     if (mapContainerRef.current && !mapRef.current) {
       const map = L.map(mapContainerRef.current).setView([33.6069, -7.6228], 14);
       mapRef.current = map;
+
+      // Add the custom speed control
+      const speedControl = L.control({ position: 'bottomright' });
+      speedControl.onAdd = function (map: any) {
+          this._div = L.DomUtil.create('div', 'speed-display');
+          this._div.style.display = 'none'; // Initially hidden
+          return this._div;
+      };
+      speedControl.update = function (speed?: number) {
+          if (speed !== undefined) {
+               this._div.innerHTML = `<div class="text-xs text-gray-400">SPEED</div><span class="font-mono text-xl font-bold text-white">${speed.toFixed(1)}</span> <span class="text-sm text-gray-300">kn</span>`;
+               this._div.style.display = 'block';
+          } else {
+               this._div.style.display = 'none';
+          }
+      };
+      speedControl.addTo(map);
+      speedControlRef.current = speedControl;
     }
   }, [mapContainerRef]);
 
@@ -150,7 +169,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     if (!map) return;
 
     if (animationState) {
-        const { position, heading } = animationState;
+        const { position, heading, speed } = animationState;
         const shipCoords = getShipPolygonCoords(position, ship.length, ship.beam, heading);
         const latLngs = shipCoords.map(p => [p.lat, p.lng]);
 
@@ -166,10 +185,16 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
                 zIndexOffset: 1000
             }).addTo(map);
         }
+        if (speedControlRef.current) {
+            speedControlRef.current.update(speed);
+        }
     } else {
         if (animationShipRef.current) {
             map.removeLayer(animationShipRef.current);
             animationShipRef.current = null;
+        }
+        if (speedControlRef.current) {
+            speedControlRef.current.update(undefined); // Hides it
         }
     }
   }, [animationState, ship.length, ship.beam]);

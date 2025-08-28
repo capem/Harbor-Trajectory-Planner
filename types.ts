@@ -54,6 +54,7 @@ export interface SavedPlan {
 export interface AnimationState {
   position: GeoPoint;
   heading: number;
+  speed: number; // Speed in knots
 }
 
 export interface MapTileLayer {

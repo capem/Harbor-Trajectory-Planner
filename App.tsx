@@ -57,14 +57,18 @@ const App: React.FC = () => {
   // Animation State
   const [isAnimating, setIsAnimating] = useState(false);
   const [animationState, setAnimationState] = useState<AnimationState | null>(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
   const animationFrameId = useRef<number | null>(null);
+  const playbackSpeedRef = useRef(playbackSpeed);
+  playbackSpeedRef.current = playbackSpeed;
+  const animationData = useRef({ lastTimestamp: 0, scaledElapsed: 0 });
   
   const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship, settings.pivotDuration);
   const selectedMapLayer = MAP_TILE_LAYERS.find(l => l.id === settings.mapTileLayerId) || MAP_TILE_LAYERS[0];
 
 
-  const calculateAnimationState = useCallback((progress: number, totalDuration: number) => {
+  const calculateAnimationState = useCallback((progress: number, totalDuration: number): AnimationState | null => {
       const currentTime = progress * totalDuration;
       let accumulatedTime = 0;
 
@@ -89,7 +93,7 @@ const App: React.FC = () => {
                   if (angleDiff < -180) angleDiff += 360;
 
                   const heading = startPivotHeading + angleDiff * pivotProgress;
-                  return { position: leg.start, heading };
+                  return { position: leg.start, heading, speed: 0 };
               }
               
               // Handle movement phase
@@ -110,14 +114,14 @@ const App: React.FC = () => {
                   heading = (heading + 180) % 360;
               }
               
-              return { position, heading };
+              return { position, heading, speed: leg.speed };
           }
           accumulatedTime = legEndTime;
       }
       // Fallback for the very end
       const lastLeg = trajectoryLegs[trajectoryLegs.length-2];
       if (lastLeg) {
-          return { position: lastLeg.end, heading: lastLeg.endHeading };
+          return { position: lastLeg.end, heading: lastLeg.endHeading, speed: 0 };
       }
       return null;
   }, [trajectoryLegs, waypoints]);
@@ -133,18 +137,19 @@ const App: React.FC = () => {
         const totalDuration = trajectoryLegs.reduce((sum, leg) => sum + leg.time, 0);
         if (totalDuration === 0) return;
 
-        // Scale duration for better viewing, e.g., max 15 seconds
-        const playbackSpeed = Math.max(1, totalDuration / 15);
-        
-        let startTime: number | null = null;
         setIsAnimating(true);
+        animationData.current = { lastTimestamp: 0, scaledElapsed: 0 };
         
         const animate = (timestamp: number) => {
-            if (!startTime) startTime = timestamp;
-            const elapsed = (timestamp - startTime) / 1000; // in seconds
+            if (!animationData.current.lastTimestamp) {
+                animationData.current.lastTimestamp = timestamp;
+            }
+            const delta = (timestamp - animationData.current.lastTimestamp) / 1000;
+            animationData.current.lastTimestamp = timestamp;
+
+            animationData.current.scaledElapsed += delta * playbackSpeedRef.current;
             
-            const scaledElapsed = elapsed * playbackSpeed;
-            const progress = Math.min(scaledElapsed / totalDuration, 1);
+            const progress = Math.min(animationData.current.scaledElapsed / totalDuration, 1);
             
             const newState = calculateAnimationState(progress, totalDuration);
             if(newState) {
@@ -155,6 +160,7 @@ const App: React.FC = () => {
                 animationFrameId.current = requestAnimationFrame(animate);
             } else {
                 setIsAnimating(false);
+                // Keep final state for a moment before clearing
                 setTimeout(() => setAnimationState(null), 1000);
             }
         };
@@ -295,6 +301,8 @@ const App: React.FC = () => {
               isAnimating={isAnimating}
               hasPlan={waypoints.length > 1}
               onResetShipToDefaults={() => setShip(settings.defaultShip)}
+              playbackSpeed={playbackSpeed}
+              onPlaybackSpeedChange={setPlaybackSpeed}
             />
           </AccordionSection>
           <div className="flex-1 flex flex-col min-h-0">

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { Ship } from '../types';
 import { TrashIcon, ImportIcon, ExportIcon, MeasureIcon, PlotIcon, PlayIcon, StopIcon } from './Icons';
 
@@ -16,6 +16,8 @@ interface ControlsProps {
   isAnimating: boolean;
   hasPlan: boolean;
   onResetShipToDefaults: () => void;
+  playbackSpeed: number;
+  onPlaybackSpeedChange: (speed: number) => void;
 }
 
 const ControlInput: React.FC<{ label: string; value: number; onChange: (value: number) => void; unit: string }> = ({ label, value, onChange, unit }) => (
@@ -48,10 +50,47 @@ const ActionButton: React.FC<{ onClick: () => void; children: React.ReactNode; c
 const Controls: React.FC<ControlsProps> = ({ 
     ship, setShip, onClear, onImportPlan, onExportPlan, 
     isMeasuring, onToggleMeasure, isPlotting, onTogglePlotting,
-    onAnimateToggle, isAnimating, hasPlan, onResetShipToDefaults
+    onAnimateToggle, isAnimating, hasPlan, onResetShipToDefaults,
+    playbackSpeed, onPlaybackSpeedChange
 }) => {
   const planFileInputRef = useRef<HTMLInputElement>(null);
   const disableActions = isAnimating;
+
+  const speedSteps = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+  const [speedInput, setSpeedInput] = useState(playbackSpeed.toString());
+
+  useEffect(() => {
+    setSpeedInput(playbackSpeed.toString());
+  }, [playbackSpeed]);
+
+  const commitSpeedChange = () => {
+    const desiredSpeed = parseInt(speedInput, 10);
+    if (isNaN(desiredSpeed) || desiredSpeed <= 0) {
+      setSpeedInput(playbackSpeed.toString()); // revert
+      return;
+    }
+    const closestSpeed = speedSteps.reduce((prev, curr) => 
+      Math.abs(curr - desiredSpeed) < Math.abs(prev - desiredSpeed) ? curr : prev
+    );
+    onPlaybackSpeedChange(closestSpeed);
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      commitSpeedChange();
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      setSpeedInput(playbackSpeed.toString());
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newIndex = parseInt(e.target.value, 10);
+      onPlaybackSpeedChange(speedSteps[newIndex]);
+  };
+  
+  const currentSpeedIndex = speedSteps.indexOf(playbackSpeed);
   
   const handlePlanFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -150,6 +189,37 @@ const Controls: React.FC<ControlsProps> = ({
                   {isAnimating ? <StopIcon className="w-5 h-5 mr-2" /> : <PlayIcon className="w-5 h-5 mr-2" />}
                   {isAnimating ? 'Stop Animation' : 'Animate Plan'}
               </ActionButton>
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-gray-400 mb-2">Playback Speed</label>
+                <div className="flex items-center space-x-3">
+                    <input
+                        type="range"
+                        min="0"
+                        max={speedSteps.length - 1}
+                        step="1"
+                        value={currentSpeedIndex}
+                        onChange={handleSliderChange}
+                        className="w-full speed-slider"
+                        list="speed-markers"
+                        title={`Current speed: ${playbackSpeed}x`}
+                    />
+                    <datalist id="speed-markers">
+                        {speedSteps.map((s, i) => <option key={s} value={i} label={`${s}x`}></option>)}
+                    </datalist>
+                    <div className="flex items-center">
+                        <input
+                            type="number"
+                            value={speedInput}
+                            onChange={(e) => setSpeedInput(e.target.value)}
+                            onBlur={commitSpeedChange}
+                            onKeyDown={handleInputKeyDown}
+                            className="w-16 bg-gray-900 border border-gray-600 rounded-md p-1 text-sm text-right font-mono text-white focus:ring-cyan-500 focus:border-cyan-500"
+                            aria-label="Playback speed"
+                        />
+                         <span className="ml-1.5 text-gray-400 font-semibold">x</span>
+                    </div>
+                </div>
+              </div>
             </div>
 
             {/* Management & Destructive actions group */}
