@@ -2,6 +2,8 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState, PropulsionDirection, MapTileLayer, EnvironmentalFactors } from '../types';
 import { calculateTrajectory } from '../hooks/useTrajectoryCalculations';
 import WaypointContextMenu from './WaypointContextMenu';
+import WindRose from './WindRose';
+import CurrentFlowLayer from './CurrentFlowLayer';
 
 // Since we don't have @types/leaflet installed from npm, we declare a global L
 declare const L: any;
@@ -124,7 +126,8 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
   const previewLayersRef = useRef<any[]>([]);
   const animationShipRef = useRef<any>(null);
   const speedControlRef = useRef<any>(null);
-
+  
+  const [mapInstance, setMapInstance] = useState<any>(null);
   const [contextMenuState, setContextMenuState] = useState<{ waypoint: Waypoint; waypointIndex: number; mouseEvent: any } | null>(null);
 
   const measureLineRef = useRef<any>(null);
@@ -136,8 +139,11 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
 
   useEffect(() => {
     if (mapContainerRef.current && !mapRef.current) {
-      const map = L.map(mapContainerRef.current).setView([33.6069, -7.6228], 14);
+      const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([33.6069, -7.6228], 14);
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+
       mapRef.current = map;
+      setMapInstance(map);
 
       // Add the custom speed control
       const speedControl = L.control({ position: 'bottomright' });
@@ -469,6 +475,12 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
   return (
     <>
       <div ref={mapContainerRef} className="w-full h-full" />
+      {mapInstance && (
+        <>
+          <WindRose map={mapInstance} environmentalFactors={environmentalFactors} />
+          <CurrentFlowLayer map={mapInstance} environmentalFactors={environmentalFactors} />
+        </>
+      )}
       {contextMenuState && (
         <WaypointContextMenu
             map={mapRef.current}

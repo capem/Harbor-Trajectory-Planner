@@ -205,7 +205,10 @@ export function calculateTrajectory(waypoints: Waypoint[], ship: Ship, pivotDura
           let currentVx = 0, currentVy = 0;
           if (hasCurrent) {
               const currentSpeedMps = environmentalFactors.current.speed * 0.514444;
-              const currentAngleRad = toRad(environmentalFactors.current.direction);
+              // Current direction is treated as where it comes FROM, similar to wind.
+              // So a 0° (North) current pushes the ship South (180°).
+              const currentForceDirection = (environmentalFactors.current.direction + 180) % 360;
+              const currentAngleRad = toRad(currentForceDirection);
               currentVx = currentSpeedMps * Math.sin(currentAngleRad);
               currentVy = currentSpeedMps * Math.cos(currentAngleRad);
           }
@@ -215,7 +218,9 @@ export function calculateTrajectory(waypoints: Waypoint[], ship: Ship, pivotDura
           if (hasWind) {
               const windSpeedMps = environmentalFactors.wind.speed * 0.514444;
               const windLeewaySpeedMps = windSpeedMps * leewayFactor;
-              const windAngleRad = toRad(environmentalFactors.wind.direction);
+              // Wind direction is where it comes FROM. The force is applied in the opposite direction.
+              const windForceDirection = (environmentalFactors.wind.direction + 180) % 360;
+              const windAngleRad = toRad(windForceDirection);
               windVx = windLeewaySpeedMps * Math.sin(windAngleRad);
               windVy = windLeewaySpeedMps * Math.cos(windAngleRad);
           }
