@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { Ship } from '../types';
 import { TrashIcon, ImportIcon, ExportIcon, MeasureIcon, PlotIcon, PlayIcon, StopIcon } from './Icons';
 
+
 interface ControlsProps {
   ship: Ship;
   setShip: (ship: Ship) => void;

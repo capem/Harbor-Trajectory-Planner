@@ -1,14 +1,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AppSettings, PropulsionDirection } from './types';
+import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AppSettings, PropulsionDirection, EnvironmentalFactors } from './types';
 import Controls from './components/Controls';
 import PlanningCanvas from './components/PlanningCanvas';
 import TrajectoryInfo from './components/TrajectoryInfo';
 import SettingsModal from './components/SettingsModal';
 import { useTrajectoryCalculations } from './hooks/useTrajectoryCalculations';
 import { useAnimation } from './hooks/useAnimation';
-import { GithubIcon, SettingsIcon, ListIcon } from './components/Icons';
+import { GithubIcon, SettingsIcon, ListIcon, WindIcon } from './components/Icons';
 import { AccordionSection } from './components/Accordion';
 import { MAP_TILE_LAYERS } from './constants';
+import EnvironmentControls from './components/EnvironmentControls';
 
 
 const App: React.FC = () => {
@@ -22,17 +23,23 @@ const App: React.FC = () => {
 
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [ship, setShip] = useState<Ship>(settings.defaultShip);
+  const [environmentalFactors, setEnvironmentalFactors] = useState<EnvironmentalFactors>({
+    driftEnabled: false,
+    wind: { speed: 0, direction: 0 },
+    current: { speed: 0, direction: 0 },
+  });
   const [zoomToFitTrigger, setZoomToFitTrigger] = useState(0);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [isPlotting, setIsPlotting] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     controls: true,
+    environment: true,
     plan: true,
   });
   const [hoveredLegId, setHoveredLegId] = useState<number | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   
-  const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship, settings.pivotDuration);
+  const trajectoryLegs: TrajectoryLeg[] = useTrajectoryCalculations(waypoints, ship, settings.pivotDuration, environmentalFactors);
   const { isAnimating, animationState, toggleAnimation } = useAnimation(trajectoryLegs, waypoints, playbackSpeed);
   
   const selectedMapLayer = MAP_TILE_LAYERS.find(l => l.id === settings.mapTileLayerId) || MAP_TILE_LAYERS[0];
@@ -160,7 +167,7 @@ const App: React.FC = () => {
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-1/4 min-w-[350px] max-w-[450px] bg-gray-800 p-4 flex flex-col space-y-4 z-10">
+        <aside className="w-1/4 min-w-[350px] max-w-[450px] bg-gray-800 p-4 flex flex-col space-y-4 z-10 overflow-y-auto">
           <AccordionSection
               title="Settings & Actions"
               icon={<SettingsIcon className="w-5 h-5 text-cyan-400" />}
@@ -185,17 +192,25 @@ const App: React.FC = () => {
               onPlaybackSpeedChange={setPlaybackSpeed}
             />
           </AccordionSection>
-          <div className="flex-1 flex flex-col min-h-0">
-            <AccordionSection
-                className="h-full"
-                title="Trajectory Plan"
-                icon={<ListIcon className="w-5 h-5 text-cyan-400" />}
-                isOpen={openSections.plan}
-                onToggle={() => toggleSection('plan')}
-            >
-              <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} onLegHover={setHoveredLegId} onSpeedChange={handleSpeedChange} onPropulsionChange={handlePropulsionChange}/>
-            </AccordionSection>
-          </div>
+          <AccordionSection
+            title="Environment"
+            icon={<WindIcon className="w-5 h-5 text-cyan-400" />}
+            isOpen={openSections.environment}
+            onToggle={() => toggleSection('environment')}
+          >
+            <EnvironmentControls
+              environmentalFactors={environmentalFactors}
+              setEnvironmentalFactors={setEnvironmentalFactors}
+            />
+          </AccordionSection>
+          <AccordionSection
+              title="Trajectory Plan"
+              icon={<ListIcon className="w-5 h-5 text-cyan-400" />}
+              isOpen={openSections.plan}
+              onToggle={() => toggleSection('plan')}
+          >
+            <TrajectoryInfo legs={trajectoryLegs} onDeleteWaypoint={handleDeleteWaypoint} onLegHover={setHoveredLegId} onSpeedChange={handleSpeedChange} onPropulsionChange={handlePropulsionChange}/>
+          </AccordionSection>
         </aside>
         <main className="flex-1 bg-gray-700 relative">
           <PlanningCanvas

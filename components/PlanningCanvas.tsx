@@ -299,12 +299,38 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     });
     layersRef.current.push(...waypointMarkers);
 
+    // --- Predicted Path (COG) ---
+    const driftedWaypoints: GeoPoint[] = [];
+    if (waypoints.length > 0) {
+      driftedWaypoints.push(waypoints[0]);
+      legs.forEach(leg => {
+        if (leg.predictedEnd) {
+          driftedWaypoints.push(leg.predictedEnd);
+        }
+      });
+    }
+
+    if (driftedWaypoints.length > 1) {
+        for (let i = 0; i < driftedWaypoints.length - 1; i++) {
+             const p0 = driftedWaypoints[i - 1] || driftedWaypoints[i];
+             const p1 = driftedWaypoints[i];
+             const p2 = driftedWaypoints[i + 1];
+             const p3 = driftedWaypoints[i + 2] || driftedWaypoints[i + 1];
+             
+             const interpolator = (t: number) => ({ lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat), lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng) });
+             const segmentPoints = Array.from({ length: 15 }, (_, j) => j / 15).map(interpolator);
+             segmentPoints.push(p2);
+             layersRef.current.push(L.polyline(segmentPoints.map(p => [p.lat, p.lng]), { color: '#f97316', weight: 4, opacity: 0.8, interactive: false }).addTo(map));
+        }
+    }
+
+
+    // --- Intended Path (CTW) & Static Ships ---
     if (waypoints.length > 1) {
         waypoints.slice(0, -1).forEach((wp, i) => {
             const leg = legs[i]; if (!leg) return;
             const isHovered = leg.id === hoveredLegId;
 
-            // Replicate control point logic from useTrajectoryCalculations for accurate visualization
             const start = waypoints[i];
             const end = waypoints[i + 1];
             
@@ -348,7 +374,10 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
                 color = '#2563eb'; // Blue for straight
                 break;
             }
-            const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, leg.startHeading);
+            // Apply course correction angle to visualize "crabbing"
+            const correctedHeading = leg.startHeading + (leg.courseCorrectionAngle || 0);
+            const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, correctedHeading);
+
             return L.polygon(shipCoords.map(p => [p.lat, p.lng]), { color, fillColor: color, fillOpacity: 0.5, weight: 1, interactive: false, zIndexOffset: -1000 }).addTo(map);
         }).filter(Boolean);
         layersRef.current.push(...shipPolygons);

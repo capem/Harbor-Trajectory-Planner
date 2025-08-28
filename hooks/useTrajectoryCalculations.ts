@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Waypoint, TrajectoryLeg, NavigationCommand, GeoPoint, Ship, PropulsionDirection } from '../types';
+import { Waypoint, TrajectoryLeg, NavigationCommand, GeoPoint, Ship, PropulsionDirection, EnvironmentalFactors } from '../types';
 
 const TURN_THRESHOLD = 5; // degrees
 
@@ -8,6 +8,10 @@ const R = 6371e3; // Earth's radius in metres
 
 function toRad(deg: number): number {
   return deg * Math.PI / 180;
+}
+
+function toDeg(rad: number): number {
+  return rad * 180 / Math.PI;
 }
 
 function getDistance(p1: GeoPoint, p2: GeoPoint): number {
@@ -39,6 +43,19 @@ function getBearing(p1: GeoPoint, p2: GeoPoint): number {
   const theta = Math.atan2(y, x);
   const brng = (theta * 180 / Math.PI + 360) % 360; // in degrees
   return brng;
+}
+
+function destinationPoint(point: GeoPoint, distance: number, bearing: number): GeoPoint {
+    const brng = toRad(bearing);
+    const lat1 = toRad(point.lat);
+    const lon1 = toRad(point.lng);
+
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(distance / R) +
+                          Math.cos(lat1) * Math.sin(distance / R) * Math.cos(brng));
+    const lon2 = lon1 + Math.atan2(Math.sin(brng) * Math.sin(distance / R) * Math.cos(lat1),
+                                  Math.cos(distance / R) - Math.sin(lat1) * Math.sin(lat2));
+    
+    return { lat: toDeg(lat2), lng: toDeg(lon2) };
 }
 // --- END GEO HELPERS ---
 
@@ -128,7 +145,7 @@ function calculateTurnRadius(p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPo
 }
 
 
-export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship, pivotDuration: number): TrajectoryLeg[] => {
+export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship, pivotDuration: number, environmentalFactors: EnvironmentalFactors): TrajectoryLeg[] => {
   return useMemo(() => {
     if (waypoints.length < 2) {
       return [];
@@ -136,6 +153,7 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship, piv
 
     const trajectoryLegs: TrajectoryLeg[] = [];
     let previousCourse: number | null = null;
+    let currentPredictedPosition = waypoints[0];
 
     for (let i = 0; i < waypoints.length - 1; i++) {
       const start = waypoints[i];
@@ -150,11 +168,9 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship, piv
       const course = getBearing(start, end);
 
       // --- Curve Properties & Headings ---
-      // If pivoting, the curve starts fresh from the current point.
       const p0 = (i > 0 && pivotTime === 0) ? waypoints[i - 1] : start;
       const p1 = start;
       const p2 = end;
-      // If the next leg involves a pivot, this leg's curve ends cleanly at the waypoint.
       const nextPropulsion = waypoints[i+1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
       const p3 = (waypoints[i+2] && nextPropulsion === propulsion) ? waypoints[i+2] : end;
 
@@ -171,6 +187,93 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship, piv
       const speedMps = speedKnots * 0.514444; // 1 knot = 0.514444 m/s
       const moveTime = speedMps > 0 ? curveDistance / speedMps : 0;
       const totalTime = moveTime + pivotTime;
+      
+      // --- Drift Calculations ---
+      let sog, cogCourse, predictedEnd, courseCorrectionAngle;
+      
+      if (environmentalFactors.driftEnabled) {
+        const hasCurrent = environmentalFactors.current.speed > 0;
+        const hasWind = environmentalFactors.wind.speed > 0;
+        const leewayFactor = 0.03; // A simple model: leeway speed is ~3% of wind speed.
+        
+        if (hasCurrent || hasWind) {
+            // Ship's intended velocity vector
+            const shipAngleRad = toRad(course);
+            const shipVx = speedMps * Math.sin(shipAngleRad);
+            const shipVy = speedMps * Math.cos(shipAngleRad);
+
+            // Current velocity vector
+            let currentVx = 0, currentVy = 0;
+            if (hasCurrent) {
+                const currentSpeedMps = environmentalFactors.current.speed * 0.514444;
+                const currentAngleRad = toRad(environmentalFactors.current.direction);
+                currentVx = currentSpeedMps * Math.sin(currentAngleRad);
+                currentVy = currentSpeedMps * Math.cos(currentAngleRad);
+            }
+
+            // Wind's effect (leeway) velocity vector
+            let windVx = 0, windVy = 0;
+            if (hasWind) {
+                const windSpeedMps = environmentalFactors.wind.speed * 0.514444;
+                const windLeewaySpeedMps = windSpeedMps * leewayFactor;
+                const windAngleRad = toRad(environmentalFactors.wind.direction);
+                windVx = windLeewaySpeedMps * Math.sin(windAngleRad);
+                windVy = windLeewaySpeedMps * Math.cos(windAngleRad);
+            }
+
+            // Total drift vector (current + wind)
+            const totalDriftVx = currentVx + windVx;
+            const totalDriftVy = currentVy + windVy;
+
+            // Calculate Course Over Ground (COG) and Speed Over Ground (SOG)
+            const sogVx = shipVx + totalDriftVx;
+            const sogVy = shipVy + totalDriftVy;
+            const sogMps = Math.sqrt(sogVx * sogVx + sogVy * sogVy);
+            const cogAngleRad = Math.atan2(sogVx, sogVy);
+
+            sog = sogMps / 0.514444;
+            cogCourse = (toDeg(cogAngleRad) + 360) % 360;
+
+            predictedEnd = destinationPoint(currentPredictedPosition, sogMps * moveTime, cogCourse);
+            
+            // Calculate Course Correction Angle (CCA)
+            if (speedMps > 0) {
+                const totalDriftSpeedMps = Math.sqrt(totalDriftVx * totalDriftVx + totalDriftVy * totalDriftVy);
+                const totalDriftAngleRad = Math.atan2(totalDriftVx, totalDriftVy);
+                
+                const angleDiff = totalDriftAngleRad - shipAngleRad;
+                const sineOfCCA = (totalDriftSpeedMps / speedMps) * Math.sin(angleDiff);
+                
+                if (Math.abs(sineOfCCA) <= 1) {
+                    const ccaRad = Math.asin(sineOfCCA);
+                    courseCorrectionAngle = toDeg(ccaRad);
+                } else {
+                    courseCorrectionAngle = NaN; // Impossible to maintain course
+                }
+            }
+        } else {
+            // Drift is enabled, but no forces are active on this leg.
+            // The predicted path's displacement must match the intended path's displacement.
+            const intendedStart = start;
+            const intendedEnd = end;
+            
+            // Calculate the intended displacement in degrees of lat/lng
+            const deltaLat = intendedEnd.lat - intendedStart.lat;
+            const deltaLng = intendedEnd.lng - intendedStart.lng;
+
+            // Apply that same displacement to the start of our predicted leg
+            predictedEnd = {
+                lat: currentPredictedPosition.lat + deltaLat,
+                lng: currentPredictedPosition.lng + deltaLng
+            };
+        }
+
+        // Update the running position for the next leg's prediction.
+        if (predictedEnd) {
+           currentPredictedPosition = predictedEnd;
+        }
+      }
+
 
       // --- Command, Turn Angle, and Violation ---
       let command: NavigationCommand;
@@ -195,7 +298,6 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship, piv
       }
 
       // --- Turn Radius Violation ---
-      // A violation can only occur on a continuous turn, not when pivoting in place.
       let turnRadiusViolation = false;
       if ((command === NavigationCommand.PORT || command === NavigationCommand.STARBOARD) && pivotTime === 0) {
         const turnRadiusMeters = calculateTurnRadius(p0, p1, p2, p3);
@@ -218,6 +320,10 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship, piv
         time: totalTime,
         pivotTime,
         propulsion,
+        sog,
+        cogCourse,
+        predictedEnd,
+        courseCorrectionAngle
       });
 
       previousCourse = course;
@@ -248,5 +354,5 @@ export const useTrajectoryCalculations = (waypoints: Waypoint[], ship: Ship, piv
     }
 
     return trajectoryLegs;
-  }, [waypoints, ship, pivotDuration]);
+  }, [waypoints, ship, pivotDuration, environmentalFactors]);
 };

@@ -20,6 +20,18 @@ export interface Ship {
   turningRadius: number; // in meters
 }
 
+export interface EnvironmentalFactors {
+  driftEnabled: boolean;
+  wind: {
+    speed: number; // knots
+    direction: number; // degrees
+  };
+  current: {
+    speed: number; // knots
+    direction: number; // degrees
+  };
+}
+
 export enum NavigationCommand {
   START = 'Start',
   PORT = 'Port',
@@ -34,16 +46,21 @@ export interface TrajectoryLeg {
   end: Waypoint;
   distance: number; // Straight line distance
   curveDistance: number;
-  course: number; // Straight-line bearing between waypoints
+  course: number; // Straight-line bearing between waypoints (Course Through Water)
   startHeading: number; // Tangential bearing for ship orientation at the start
   endHeading: number; // Tangential bearing for ship orientation at the end
   command: NavigationCommand;
   turnAngle: number;
   turnRadiusViolation?: boolean;
-  speed: number; // Speed in knots for this leg
+  speed: number; // Speed in knots for this leg (Speed Through Water)
   time: number; // Time in seconds for this leg (includes pivot time)
   pivotTime: number; // Time in seconds spent pivoting at the start of the leg
   propulsion: PropulsionDirection;
+  // Drift-related calculations
+  sog?: number; // Speed Over Ground in knots
+  cogCourse?: number; // Course Over Ground in degrees
+  predictedEnd?: GeoPoint; // The calculated end point of the leg with drift
+  courseCorrectionAngle?: number; // Heading change required to maintain original course
 }
 
 export interface SavedPlan {

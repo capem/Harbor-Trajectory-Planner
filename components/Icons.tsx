@@ -149,3 +149,20 @@ export const CloseIcon: React.FC<IconProps> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
 );
+
+export const WindIcon: React.FC<IconProps> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" transform="rotate(90 12 12)" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12H21M3.5 8H12M3.5 16H16" />
+    </svg>
+);
+
+export const CurrentIcon: React.FC<IconProps> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v4l4-4" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v4l4-4" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 20v4l4-4" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h16" />
+        <path strokeLinecap="round" strokeLinejoin="round"d="M4 16h16" />
+    </svg>
+);

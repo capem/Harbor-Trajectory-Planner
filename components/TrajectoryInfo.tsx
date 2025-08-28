@@ -58,6 +58,7 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
   const totalLineDistance = actualLegs.reduce((sum, leg) => sum + leg.distance, 0);
   const totalCurveDistance = actualLegs.reduce((sum, leg) => sum + leg.curveDistance, 0);
   const totalTimeSeconds = legs.reduce((sum, leg) => sum + (leg.time || 0), 0);
+  const hasDriftData = legs.some(leg => leg.sog !== undefined);
 
   return (
     <div className="flex flex-col">
@@ -86,21 +87,35 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
                   <>
                     <div className="mt-2 pt-2 border-t border-gray-700/50 space-y-1 text-sm text-gray-400">
                         <div className="flex justify-between items-center">
-                            <span>Line Distance</span>
-                            <span className="font-mono text-gray-200">{leg.distance.toFixed(1)} m</span>
-                        </div>
-                        <div className="flex justify-between items-center">
                             <span>Curve Distance</span>
                             <span className="font-mono text-gray-200">{leg.curveDistance.toFixed(1)} m</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span>Course (Bearing)</span>
+                            <span>Course (CTW)</span>
                             <span className="font-mono text-gray-200">{leg.course.toFixed(1)}°</span>
                         </div>
+                         {leg.cogCourse !== undefined && (
+                           <div className="flex justify-between items-center">
+                              <span>Course (COG)</span>
+                              <span className="font-mono text-amber-400">{leg.cogCourse.toFixed(1)}°</span>
+                           </div>
+                         )}
                          <div className="flex justify-between items-center">
                             <span>Headings</span>
                             <span className="font-mono text-gray-200">{leg.startHeading.toFixed(1)}° → {leg.endHeading.toFixed(1)}°</span>
                         </div>
+                         {leg.courseCorrectionAngle !== undefined && (
+                           <div className="flex justify-between items-center">
+                               <span>Correction Angle</span>
+                               {isNaN(leg.courseCorrectionAngle) ? (
+                                    <span className="font-mono text-red-500" title="Current is too strong to maintain course at this speed.">Too Strong</span>
+                               ) : (
+                                    <span className="font-mono text-gray-200" title="Required heading adjustment to counteract current.">
+                                        {`${Math.abs(leg.courseCorrectionAngle).toFixed(1)}° ${leg.courseCorrectionAngle < -0.1 ? '(Port)' : leg.courseCorrectionAngle > 0.1 ? '(Stbd)' : ''}`.trim()}
+                                    </span>
+                               )}
+                           </div>
+                         )}
                     </div>
                     <div className="mt-2 pt-2 border-t border-gray-600/50 flex items-center justify-between">
                       <div className="flex items-center space-x-2">
@@ -114,8 +129,10 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
                               step="0.5"
                               className="w-16 bg-gray-900 border border-gray-600 rounded-md p-1 text-sm text-right font-mono text-white focus:ring-cyan-500 focus:border-cyan-500"
                               aria-label={`Speed for leg ${index + 1}`}
+                              title="Speed Through Water (kn)"
                           />
                           <span className="text-gray-400 text-sm">kn</span>
+                          {leg.sog !== undefined && <span className="text-amber-400 font-mono text-xs" title="Speed Over Ground">({leg.sog.toFixed(1)} kn)</span>}
                       </div>
                       <div className="flex items-center space-x-2 text-sm">
                           {leg.pivotTime > 0 && <span className="text-amber-400 font-mono text-xs">(+{leg.pivotTime}s pivot)</span>}
@@ -167,12 +184,21 @@ const TrajectoryInfo: React.FC<TrajectoryInfoProps> = ({ legs, onDeleteWaypoint,
         <div className="mt-4 pt-4 border-t border-gray-700">
           <h3 className="text-md font-semibold text-cyan-400 mb-2">Totals</h3>
           <div className="text-sm text-gray-300 grid grid-cols-2 gap-x-4 gap-y-1">
-            <span>Total Line:</span>
-            <span className="font-mono text-right font-bold">{totalLineDistance.toFixed(1)} m</span>
-            <span>Total Curve:</span>
-            <span className="font-mono text-right font-bold">{totalCurveDistance.toFixed(1)} m</span>
-            <span>Total Time:</span>
-            <span className="font-mono text-right font-bold">{formatTime(totalTimeSeconds)}</span>
+             {hasDriftData ? (
+                <>
+                  <span>Intended Path:</span>
+                  <span className="font-mono text-right font-bold">{totalCurveDistance.toFixed(1)} m</span>
+                  <span>Total Time:</span>
+                  <span className="font-mono text-right font-bold">{formatTime(totalTimeSeconds)}</span>
+                </>
+             ) : (
+                <>
+                  <span>Total Curve:</span>
+                  <span className="font-mono text-right font-bold">{totalCurveDistance.toFixed(1)} m</span>
+                  <span>Total Time:</span>
+                  <span className="font-mono text-right font-bold">{formatTime(totalTimeSeconds)}</span>
+                </>
+             )}
           </div>
         </div>
       )}
