@@ -37,7 +37,7 @@ const ActionButton: React.FC<{ onClick: () => void; children: React.ReactNode; c
     onClick={onClick}
     title={title}
     disabled={disabled}
-    className={`w-full flex items-center justify-center p-2 rounded-md text-white font-semibold transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed ${className} ${isActive ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-cyan-400' : ''}`}
+    className={`flex items-center justify-center p-2 rounded-md text-white font-semibold transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed ${className} ${isActive ? 'ring-2 ring-offset-2 ring-offset-gray-800 ring-cyan-400' : ''}`}
   >
     {children}
   </button>
@@ -99,48 +99,71 @@ const Controls: React.FC<ControlsProps> = ({
             className="hidden"
             accept=".json,application/json"
          />
-         <div className="grid grid-cols-2 gap-3">
-            <ActionButton 
-                onClick={onTogglePlotting}
-                className="bg-sky-600 hover:bg-sky-500"
-                title="Toggle waypoint plotting mode. Click on the map to add waypoints."
-                isActive={isPlotting}
-                disabled={disableActions}
-            >
-                <PlotIcon className="w-5 h-5 mr-2" />
-                Plot Waypoints
-            </ActionButton>
-            <ActionButton 
-                onClick={onToggleMeasure}
-                className="bg-cyan-600 hover:bg-cyan-500"
-                title="Activate measurement tool. Click two points on the map to measure the distance between them."
-                isActive={isMeasuring}
-                disabled={disableActions}
-            >
-                <MeasureIcon className="w-5 h-5 mr-2" />
-                Measure Distance
-            </ActionButton>
-            <ActionButton 
-                onClick={onAnimateToggle}
-                className={isAnimating ? "bg-amber-600 hover:bg-amber-500" : "bg-teal-600 hover:bg-teal-500"}
-                title={isAnimating ? "Stop the trajectory animation" : "Animate the ship's trajectory"}
-                disabled={!hasPlan}
-            >
-                {isAnimating ? <StopIcon className="w-5 h-5 mr-2" /> : <PlayIcon className="w-5 h-5 mr-2" />}
-                {isAnimating ? 'Stop Animation' : 'Animate Plan'}
-            </ActionButton>
-            <ActionButton onClick={triggerPlanFileInput} className="bg-indigo-600 hover:bg-indigo-500" title="Import a previously saved trajectory plan (.json file)." disabled={disableActions}>
-                <ImportIcon className="w-5 h-5 mr-2" />
-                Import Plan
-            </ActionButton>
-            <ActionButton onClick={onExportPlan} className="bg-emerald-600 hover:bg-emerald-500 col-span-2" title="Save the current waypoints and ship configuration to a JSON file." disabled={!hasPlan || disableActions}>
-                <ExportIcon className="w-5 h-5 mr-2" />
-                Export Plan
-            </ActionButton>
-            <ActionButton onClick={onClear} className="bg-red-600 hover:bg-red-500 col-span-2" title="Remove all waypoints and clear the current plan. This action cannot be undone." disabled={disableActions}>
+         <div className="space-y-5">
+            {/* Editing Tools Group */}
+            <div>
+                <label className="block text-xs font-medium text-gray-400 mb-2">Editing Tools</label>
+                <div className="flex">
+                    <ActionButton
+                        onClick={onTogglePlotting}
+                        title="Toggle waypoint plotting mode. Click on the map to add waypoints."
+                        disabled={disableActions}
+                        isActive={isPlotting}
+                        className={`relative flex-1 rounded-r-none ${isPlotting ? 'bg-sky-600 z-10' : 'bg-gray-700 hover:bg-gray-600'}`}
+                    >
+                        <PlotIcon className="w-5 h-5 mr-2" />
+                        Plot Waypoints
+                    </ActionButton>
+                    <ActionButton
+                        onClick={onToggleMeasure}
+                        title="Activate measurement tool. Click two points on the map to measure the distance."
+                        disabled={disableActions}
+                        isActive={isMeasuring}
+                        className={`relative flex-1 rounded-l-none border-l border-gray-800 ${isMeasuring ? 'bg-cyan-600 z-10' : 'bg-gray-700 hover:bg-gray-600'}`}
+                    >
+                        <MeasureIcon className="w-5 h-5 mr-2" />
+                        Measure
+                    </ActionButton>
+                </div>
+            </div>
+
+            {/* Simulation Group */}
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-2">Simulation</label>
+              <ActionButton 
+                  onClick={onAnimateToggle}
+                  className={`w-full ${isAnimating ? "bg-amber-600 hover:bg-amber-500" : "bg-teal-600 hover:bg-teal-500"}`}
+                  title={isAnimating ? "Stop the trajectory animation" : "Animate the ship's trajectory"}
+                  disabled={!hasPlan}
+              >
+                  {isAnimating ? <StopIcon className="w-5 h-5 mr-2" /> : <PlayIcon className="w-5 h-5 mr-2" />}
+                  {isAnimating ? 'Stop Animation' : 'Animate Plan'}
+              </ActionButton>
+            </div>
+
+            {/* Management & Destructive actions group */}
+            <div className="pt-2">
+              <label className="block text-xs font-medium text-gray-400 mb-2">Plan Management</label>
+              <div className="grid grid-cols-2 gap-3">
+                  <ActionButton onClick={triggerPlanFileInput} className="bg-slate-600 hover:bg-slate-500" title="Import a previously saved trajectory plan (.json file)." disabled={disableActions}>
+                      <ImportIcon className="w-5 h-5 mr-2" />
+                      Import
+                  </ActionButton>
+                  <ActionButton onClick={onExportPlan} className="bg-slate-600 hover:bg-slate-500" title="Save the current waypoints and ship configuration to a JSON file." disabled={!hasPlan || disableActions}>
+                      <ExportIcon className="w-5 h-5 mr-2" />
+                      Export
+                  </ActionButton>
+              </div>
+               <ActionButton 
+                onClick={onClear} 
+                className="w-full mt-4 bg-transparent border border-red-700 text-red-500 hover:bg-red-900/50 hover:text-red-400" 
+                title="Remove all waypoints and clear the current plan. This action cannot be undone." 
+                disabled={!hasPlan || disableActions}
+               >
                 <TrashIcon className="w-5 h-5 mr-2" />
                 Clear Plan
-            </ActionButton>
+              </ActionButton>
+            </div>
          </div>
       </div>
     </div>
