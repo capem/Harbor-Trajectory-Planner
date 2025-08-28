@@ -219,6 +219,8 @@ const App: React.FC = () => {
             onAddWaypoint={handleAddWaypoint}
             onUpdateWaypoint={handleUpdateWaypoint}
             onDeleteWaypoint={handleDeleteWaypoint}
+            onSpeedChange={handleSpeedChange}
+            onPropulsionChange={handlePropulsionChange}
             legs={trajectoryLegs}
             zoomToFitTrigger={zoomToFitTrigger}
             isMeasuring={isMeasuring}
@@ -226,6 +228,8 @@ const App: React.FC = () => {
             hoveredLegId={hoveredLegId}
             animationState={animationState}
             mapTileLayer={selectedMapLayer}
+            environmentalFactors={environmentalFactors}
+            pivotDuration={settings.pivotDuration}
           />
         </main>
       </div>

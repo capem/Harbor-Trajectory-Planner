@@ -1,5 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState, PropulsionDirection, MapTileLayer } from '../types';
+import React, { useRef, useEffect, useState } from 'react';
+import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState, PropulsionDirection, MapTileLayer, EnvironmentalFactors } from '../types';
+import { calculateTrajectory } from '../hooks/useTrajectoryCalculations';
+import WaypointContextMenu from './WaypointContextMenu';
 
 // Since we don't have @types/leaflet installed from npm, we declare a global L
 declare const L: any;
@@ -10,6 +12,8 @@ interface PlanningCanvasProps {
   onAddWaypoint: (point: GeoPoint) => void;
   onUpdateWaypoint: (id: number, point: GeoPoint) => void;
   onDeleteWaypoint: (id: number) => void;
+  onSpeedChange: (waypointId: number, speed: number) => void;
+  onPropulsionChange: (waypointId: number, propulsion: PropulsionDirection) => void;
   legs: TrajectoryLeg[];
   zoomToFitTrigger: number;
   isMeasuring: boolean;
@@ -17,6 +21,8 @@ interface PlanningCanvasProps {
   hoveredLegId?: number | null;
   animationState: AnimationState | null;
   mapTileLayer: MapTileLayer;
+  environmentalFactors: EnvironmentalFactors;
+  pivotDuration: number;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -108,15 +114,18 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
 
 const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ 
     waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, 
-    legs, zoomToFitTrigger, isMeasuring, isPlotting, hoveredLegId, animationState,
-    mapTileLayer
+    onSpeedChange, onPropulsionChange, legs, zoomToFitTrigger, isMeasuring, isPlotting, 
+    hoveredLegId, animationState, mapTileLayer, environmentalFactors, pivotDuration
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
+  const previewLayersRef = useRef<any[]>([]);
   const animationShipRef = useRef<any>(null);
   const speedControlRef = useRef<any>(null);
+
+  const [contextMenuState, setContextMenuState] = useState<{ waypoint: Waypoint; waypointIndex: number; mouseEvent: any } | null>(null);
 
   const measureLineRef = useRef<any>(null);
   const measureTooltipRef = useRef<any>(null);
@@ -163,6 +172,18 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     }).addTo(map);
 
   }, [mapTileLayer]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const closeMenu = () => setContextMenuState(null);
+    map.on('click', closeMenu);
+    map.on('dragstart', closeMenu);
+    return () => {
+        map.off('click', closeMenu);
+        map.off('dragstart', closeMenu);
+    };
+  }, [mapRef.current]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -269,7 +290,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
         map.dragging.enable(); cleanupMeasureLayers(); cleanupPlotPreviewLayers();
     }
     return () => {
-        map.dragging.enable(); map.off('click'); map.off('mousemove'); map.off('mouseout');
+        map.dragging.enable(); map.off('mousemove'); map.off('mouseout');
         cleanupMeasureLayers(); cleanupPlotPreviewLayers();
     };
   }, [isMeasuring, isPlotting, onAddWaypoint, waypoints]);
@@ -291,9 +312,63 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
         draggable: isInteractive, interactive: isInteractive,
         icon: L.divIcon({ className: 'waypoint-marker', html: iconHtml, iconSize: [24, 24], iconAnchor: [12, 12] })
       }).addTo(map);
+
       if (isInteractive) {
-        marker.on('dragend', (e: any) => onUpdateWaypoint(wp.id, e.target.getLatLng()));
-        marker.on('contextmenu', () => onDeleteWaypoint(wp.id));
+        marker.on('dragstart', () => setContextMenuState(null));
+
+        marker.on('drag', (e: any) => {
+            previewLayersRef.current.forEach(layer => map.removeLayer(layer));
+            previewLayersRef.current = [];
+
+            const newWaypoints = waypoints.map(w => w.id === wp.id ? { ...w, ...e.latlng } : w);
+            const previewLegs = calculateTrajectory(newWaypoints, ship, pivotDuration, environmentalFactors);
+
+            // --- Draw Preview Predicted Path (COG) ---
+            const driftedWaypoints: GeoPoint[] = [];
+            if (newWaypoints.length > 0) {
+                driftedWaypoints.push(newWaypoints[0]);
+                previewLegs.forEach(leg => { if (leg.predictedEnd) { driftedWaypoints.push(leg.predictedEnd); } });
+            }
+            if (driftedWaypoints.length > 1) {
+                for (let i = 0; i < driftedWaypoints.length - 1; i++) {
+                    const p0 = driftedWaypoints[i - 1] || driftedWaypoints[i];
+                    const p1 = driftedWaypoints[i];
+                    const p2 = driftedWaypoints[i + 1];
+                    const p3 = driftedWaypoints[i + 2] || driftedWaypoints[i + 1];
+                    const interpolator = (t: number) => ({ lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat), lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng) });
+                    const segmentPoints = Array.from({ length: 15 }, (_, j) => j / 15).map(interpolator);
+                    segmentPoints.push(p2);
+                    const line = L.polyline(segmentPoints.map(p => [p.lat, p.lng]), { color: '#f97316', weight: 4, opacity: 0.8, interactive: false, dashArray: '8, 8' }).addTo(map);
+                    previewLayersRef.current.push(line);
+                }
+            }
+            // --- Draw Preview Intended Path (CTW) ---
+            if (newWaypoints.length > 1) {
+                newWaypoints.slice(0, -1).forEach((wp, i) => {
+                    const p0 = newWaypoints[i - 1] || newWaypoints[i];
+                    const p1 = newWaypoints[i];
+                    const p2 = newWaypoints[i + 1];
+                    const p3 = newWaypoints[i + 2] || newWaypoints[i + 1];
+                    const interpolator = (t: number) => ({ lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat), lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng) });
+                    const segmentPoints = Array.from({ length: 15 }, (_, j) => j / 15).map(interpolator);
+                    segmentPoints.push(p2);
+                    const line = L.polyline(segmentPoints.map(p => [p.lat, p.lng]), { color: 'rgba(255, 255, 255, 0.7)', weight: 3, dashArray: '10, 10', interactive: false }).addTo(map);
+                    previewLayersRef.current.push(line);
+                });
+            }
+        });
+
+        marker.on('dragend', (e: any) => {
+            previewLayersRef.current.forEach(layer => map.removeLayer(layer));
+            previewLayersRef.current = [];
+            onUpdateWaypoint(wp.id, e.target.getLatLng());
+        });
+
+        marker.on('contextmenu', (e: any) => {
+            L.DomEvent.preventDefault(e);
+            L.DomEvent.stopPropagation(e);
+            setContextMenuState({ waypoint: wp, waypointIndex: index, mouseEvent: e });
+        });
       }
       return marker;
     });
@@ -358,8 +433,6 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     
     if (legs.length > 0 && !animationState) {
         const shipPolygons = legs.map((leg) => {
-            if (leg.command === NavigationCommand.END) return null;
-            
             let color: string;
             switch (leg.command) {
               case NavigationCommand.START:
@@ -368,6 +441,9 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
                 break;
               case NavigationCommand.PORT:
                 color = '#dc2626'; // Red for port turns
+                break;
+              case NavigationCommand.END:
+                color = '#facc15'; // Yellow for final position
                 break;
               case NavigationCommand.STRAIGHT:
               default:
@@ -382,7 +458,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
         }).filter(Boolean);
         layersRef.current.push(...shipPolygons);
     }
-  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId, animationState]);
+  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId, animationState, onPropulsionChange, onSpeedChange, environmentalFactors, pivotDuration]);
   
   useEffect(() => {
     if (zoomToFitTrigger === 0 || !mapRef.current || waypoints.length === 0) return;
@@ -390,7 +466,24 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     mapRef.current.fitBounds(bounds, { padding: [50, 50] });
   }, [zoomToFitTrigger, waypoints.length]);
 
-  return <div ref={mapContainerRef} className="w-full h-full" />;
+  return (
+    <>
+      <div ref={mapContainerRef} className="w-full h-full" />
+      {contextMenuState && (
+        <WaypointContextMenu
+            map={mapRef.current}
+            waypoint={contextMenuState.waypoint}
+            waypointIndex={contextMenuState.waypointIndex}
+            waypointsCount={waypoints.length}
+            mouseEvent={contextMenuState.mouseEvent}
+            onClose={() => setContextMenuState(null)}
+            onDelete={onDeleteWaypoint}
+            onSpeedChange={onSpeedChange}
+            onPropulsionChange={onPropulsionChange}
+        />
+      )}
+    </>
+  );
 };
 
 export default PlanningCanvas;
