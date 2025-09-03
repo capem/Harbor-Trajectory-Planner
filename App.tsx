@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AppSettings, PropulsionDirection, EnvironmentalFactors } from './types';
+import { Waypoint, Ship, TrajectoryLeg, GeoPoint, SavedPlan, AppSettings, PropulsionDirection, EnvironmentalFactors, WaypointShape } from './types';
 import PlanningCanvas from './components/PlanningCanvas';
 import TrajectoryInfo from './components/TrajectoryInfo';
 import SettingsModal from './components/SettingsModal';
@@ -44,6 +44,11 @@ const App: React.FC = () => {
     defaultSpeed: 5.0,
     pivotDuration: 30,
     mapTileLayerId: 'dark',
+    waypointSettings: {
+      color: '#0ea5e9', // sky-500
+      shape: WaypointShape.CIRCLE,
+      size: 12,
+    },
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -426,6 +431,7 @@ const App: React.FC = () => {
             mapTileLayer={selectedMapLayer}
             environmentalFactors={environmentalFactors}
             pivotDuration={settings.pivotDuration}
+            waypointSettings={settings.waypointSettings}
           />
         </main>
       </div>

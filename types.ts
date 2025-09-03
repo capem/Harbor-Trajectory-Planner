@@ -81,9 +81,22 @@ export interface MapTileLayer {
   attribution: string;
 }
 
+export enum WaypointShape {
+  CIRCLE = 'Circle',
+  SQUARE = 'Square',
+  DIAMOND = 'Diamond',
+}
+
+export interface WaypointSettings {
+  color: string;
+  shape: WaypointShape;
+  size: number;
+}
+
 export interface AppSettings {
   defaultShip: Ship;
   defaultSpeed: number;
   pivotDuration: number;
   mapTileLayerId: string;
+  waypointSettings: WaypointSettings;
 }

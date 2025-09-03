@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState, PropulsionDirection, MapTileLayer, EnvironmentalFactors } from '../types';
+import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState, PropulsionDirection, MapTileLayer, EnvironmentalFactors, WaypointSettings, WaypointShape } from '../types';
 import { calculateTrajectory } from '../hooks/useTrajectoryCalculations';
 import WaypointContextMenu from './WaypointContextMenu';
 import WindRose from './WindRose';
@@ -25,6 +25,7 @@ interface PlanningCanvasProps {
   mapTileLayer: MapTileLayer;
   environmentalFactors: EnvironmentalFactors;
   pivotDuration: number;
+  waypointSettings: WaypointSettings;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -117,7 +118,7 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
 const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ 
     waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, 
     onSpeedChange, onPropulsionChange, legs, zoomToFitTrigger, isMeasuring, isPlotting, 
-    hoveredLegId, animationState, mapTileLayer, environmentalFactors, pivotDuration
+    hoveredLegId, animationState, mapTileLayer, environmentalFactors, pivotDuration, waypointSettings
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -313,10 +314,39 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     const waypointMarkers = waypoints.map((wp, index) => {
       const leg = legs.find(l => l.start.id === wp.id);
       const isViolation = leg?.turnRadiusViolation;
-      const iconHtml = `<div class="relative flex items-center justify-center">${isViolation ? '<div class="absolute w-8 h-8 rounded-full border-2 border-red-500 animate-ping opacity-75"></div>' : ''}<div class="absolute w-6 h-6 rounded-full bg-sky-500 border-2 border-white shadow-lg"></div><div class="absolute -top-6 text-center text-white font-bold text-sm" style="text-shadow: 0 0 4px black, 0 0 4px black;">WP${index + 1}</div></div>`;
+      
+      const { color, shape, size } = waypointSettings;
+      const violationPingSize = size * 1.4;
+      
+      let shapeClasses = '';
+      switch (shape) {
+        case WaypointShape.SQUARE:
+          shapeClasses = 'rounded-sm';
+          break;
+        case WaypointShape.DIAMOND:
+          shapeClasses = 'transform rotate-45 rounded-sm';
+          break;
+        case WaypointShape.CIRCLE:
+        default:
+          shapeClasses = 'rounded-full';
+          break;
+      }
+
+      const iconHtml = `
+        <div class="relative flex items-center justify-center w-full h-full">
+          ${isViolation ? `<div class="absolute rounded-full border-2 border-red-500 animate-ping opacity-75" style="width: ${violationPingSize}px; height: ${violationPingSize}px;"></div>` : ''}
+          <div class="absolute border-2 border-white shadow-lg ${shapeClasses}" style="width: ${size}px; height: ${size}px; background-color: ${color};"></div>
+          <div class="absolute text-center text-white font-bold text-xs" style="text-shadow: 0 0 4px black, 0 0 4px black; bottom: ${size}px;">WP${index + 1}</div>
+        </div>`;
+
       const marker = L.marker([wp.lat, wp.lng], {
         draggable: isInteractive, interactive: isInteractive,
-        icon: L.divIcon({ className: 'waypoint-marker', html: iconHtml, iconSize: [24, 24], iconAnchor: [12, 12] })
+        icon: L.divIcon({ 
+          className: 'waypoint-marker', 
+          html: iconHtml, 
+          iconSize: [size, size], 
+          iconAnchor: [size / 2, size / 2] 
+        })
       }).addTo(map);
 
       if (isInteractive) {
@@ -464,7 +494,7 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
         }).filter(Boolean);
         layersRef.current.push(...shipPolygons);
     }
-  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId, animationState, onPropulsionChange, onSpeedChange, environmentalFactors, pivotDuration]);
+  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId, animationState, onPropulsionChange, onSpeedChange, environmentalFactors, pivotDuration, waypointSettings]);
   
   useEffect(() => {
     if (zoomToFitTrigger === 0 || !mapRef.current || waypoints.length === 0) return;

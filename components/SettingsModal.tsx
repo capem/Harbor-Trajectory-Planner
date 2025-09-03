@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppSettings, Ship } from '../types';
+import { AppSettings, Ship, WaypointShape, WaypointSettings } from '../types';
 import { MAP_TILE_LAYERS } from '../constants';
 import { CloseIcon, SettingsIcon } from './Icons';
 
@@ -39,6 +39,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, onSave, 
 
     const handleShipChange = (field: keyof Ship, value: number) => {
         setSettings(prev => ({ ...prev, defaultShip: { ...prev.defaultShip, [field]: value } }));
+    };
+
+    const handleWaypointSettingsChange = <K extends keyof WaypointSettings>(field: K, value: WaypointSettings[K]) => {
+        setSettings(prev => ({
+            ...prev,
+            waypointSettings: {
+                ...prev.waypointSettings,
+                [field]: value
+            }
+        }));
     };
     
     const handleSave = () => {
@@ -119,6 +129,50 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, onSave, 
                                     </option>
                                 ))}
                             </select>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-gray-700/50">
+                            <label className="block text-sm font-medium text-gray-400 mb-2">Waypoint Style</label>
+                            <div className="space-y-3">
+                                <SettingsInput
+                                    label="Size"
+                                    value={settings.waypointSettings.size}
+                                    onChange={val => handleWaypointSettingsChange('size', val)}
+                                    unit="px"
+                                    min={4}
+                                    step={1}
+                                />
+                                <div className="grid grid-cols-2 items-center gap-x-4">
+                                    <label htmlFor="waypoint-shape-select" className="block text-sm font-medium text-gray-400">Shape</label>
+                                    <select
+                                        id="waypoint-shape-select"
+                                        value={settings.waypointSettings.shape}
+                                        onChange={e => handleWaypointSettingsChange('shape', e.target.value as WaypointShape)}
+                                        className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 text-sm text-white focus:ring-cyan-500 focus:border-cyan-500"
+                                    >
+                                        {Object.values(WaypointShape).map(shape => (
+                                            <option key={shape} value={shape}>{shape}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-2 items-center gap-x-4">
+                                    <label htmlFor="waypoint-color-input" className="block text-sm font-medium text-gray-400">Color</label>
+                                    <div className="flex items-center space-x-2">
+                                        <input
+                                            id="waypoint-color-input"
+                                            type="color"
+                                            value={settings.waypointSettings.color}
+                                            onChange={e => handleWaypointSettingsChange('color', e.target.value)}
+                                            className="w-8 h-8 p-0 border-none rounded cursor-pointer bg-transparent"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={settings.waypointSettings.color}
+                                            onChange={e => handleWaypointSettingsChange('color', e.target.value)}
+                                            className="w-full bg-gray-900 border border-gray-600 rounded-md p-1 text-sm text-white focus:ring-cyan-500 focus:border-cyan-500 font-mono"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
