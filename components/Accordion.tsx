@@ -28,7 +28,7 @@ export const AccordionSection: React.FC<{ title: string; icon: React.ReactNode; 
     }, [isOpen]);
 
     return (
-        <div className={`bg-gray-900/70 rounded-lg overflow-hidden border border-gray-700/50 flex flex-col ${className}`}>
+        <div className={`bg-gray-900/70 rounded-lg overflow-hidden border border-gray-700/50 flex flex-col transition-all duration-300 ease-in-out ${className}`}>
             <button onClick={onToggle} className="w-full flex justify-between items-center p-4 bg-gray-800/50 hover:bg-gray-700/50 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 flex-shrink-0">
                 <div className="flex items-center space-x-3">
                     {icon}
