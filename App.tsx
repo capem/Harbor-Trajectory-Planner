@@ -43,7 +43,7 @@ const App: React.FC = () => {
     defaultShip: { length: 150, beam: 25, turningRadius: 300 },
     defaultSpeed: 5.0,
     pivotDuration: 30,
-    mapTileLayerId: 'osm',
+    mapTileLayerId: 'dark',
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 

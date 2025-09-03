@@ -105,21 +105,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, onSave, 
                     
                     <div>
                         <SectionHeader>Visuals</SectionHeader>
-                        <div role="radiogroup" aria-labelledby="map-style-label">
-                            <span id="map-style-label" className="block text-sm font-medium text-gray-400 mb-2">Map Style</span>
-                            <div className="grid grid-cols-3 gap-2">
+                        <div>
+                            <label htmlFor="map-style-select" className="block text-sm font-medium text-gray-400 mb-2">Map Style</label>
+                            <select
+                                id="map-style-select"
+                                value={settings.mapTileLayerId}
+                                onChange={(e) => setSettings({...settings, mapTileLayerId: e.target.value})}
+                                className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 text-sm text-white focus:ring-cyan-500 focus:border-cyan-500"
+                            >
                                 {MAP_TILE_LAYERS.map(layer => (
-                                    <button 
-                                        key={layer.id}
-                                        role="radio"
-                                        aria-checked={settings.mapTileLayerId === layer.id}
-                                        onClick={() => setSettings({...settings, mapTileLayerId: layer.id})}
-                                        className={`p-2 text-center rounded-md text-sm font-semibold transition-all duration-200 border-2 ${settings.mapTileLayerId === layer.id ? 'bg-cyan-600 border-cyan-400 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500'}`}
-                                    >
+                                    <option key={layer.id} value={layer.id}>
                                         {layer.name}
-                                    </button>
+                                    </option>
                                 ))}
-                            </div>
+                            </select>
                         </div>
                     </div>
 
