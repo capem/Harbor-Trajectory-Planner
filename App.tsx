@@ -203,6 +203,13 @@ const App: React.FC = () => {
     setIsSidebarOpen(prev => !prev);
   };
 
+  const handleTabClick = (tabName: string) => {
+    if (!isSidebarOpen) {
+      setIsSidebarOpen(true);
+    }
+    setActiveTab(tabName);
+  };
+
   const handlePlanFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -271,9 +278,9 @@ const App: React.FC = () => {
       <div className="flex flex-1 overflow-hidden">
         <div className="flex bg-gray-800 shadow-lg z-10">
           <div className="w-16 bg-gray-900 p-2 flex flex-col space-y-2">
-            <TabButton label="Plan" icon={<PlotIcon className="w-6 h-6" />} isActive={activeTab === 'plan'} onClick={() => setActiveTab('plan')} />
-            <TabButton label="Configure" icon={<SettingsIcon className="w-6 h-6" />} isActive={activeTab === 'ship_env'} onClick={() => setActiveTab('ship_env')} />
-            <TabButton label="Simulate" icon={<PlayIcon className="w-6 h-6" />} isActive={activeTab === 'simulate'} onClick={() => setActiveTab('simulate')} />
+            <TabButton label="Plan" icon={<PlotIcon className="w-6 h-6" />} isActive={activeTab === 'plan'} onClick={() => handleTabClick('plan')} />
+            <TabButton label="Configure" icon={<SettingsIcon className="w-6 h-6" />} isActive={activeTab === 'ship_env'} onClick={() => handleTabClick('ship_env')} />
+            <TabButton label="Simulate" icon={<PlayIcon className="w-6 h-6" />} isActive={activeTab === 'simulate'} onClick={() => handleTabClick('simulate')} />
             <div className="flex-grow" />
             <button onClick={toggleSidebar} title={isSidebarOpen ? "Collapse Panel" : "Expand Panel"} className="w-full flex items-center justify-center p-3 rounded-lg transition-colors text-gray-400 hover:bg-gray-700 hover:text-white">
               {isSidebarOpen ? <ChevronDoubleLeftIcon className="w-6 h-6" /> : <ChevronDoubleRightIcon className="w-6 h-6" />}
