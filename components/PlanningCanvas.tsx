@@ -105,6 +105,29 @@ function getShipPolygonCoords(center: GeoPoint, length: number, beam: number, he
     });
 }
 
+/**
+ * Generates an array of GeoPoints representing an arc.
+ * @param center The center of the arc.
+ * @param radius The radius in meters.
+ * @param startBearing The starting bearing in degrees.
+ * @param endBearing The ending bearing in degrees.
+ * @param segments The number of segments to approximate the arc.
+ * @returns An array of GeoPoints.
+ */
+function getArcPoints(center: GeoPoint, radius: number, startBearing: number, endBearing: number, segments = 20): GeoPoint[] {
+    let angleDiff = endBearing - startBearing;
+    if (angleDiff > 180) angleDiff -= 360;
+    if (angleDiff < -180) angleDiff += 360;
+
+    const points: GeoPoint[] = [];
+    for (let i = 0; i <= segments; i++) {
+        const progress = i / segments;
+        const currentBearing = startBearing + angleDiff * progress;
+        points.push(destinationPoint(center, radius, currentBearing));
+    }
+    return points;
+}
+
 
 function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): number {
   return 0.5 * (
@@ -499,6 +522,36 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
         });
     }
     
+    // --- Draw Pivot Arcs ---
+    legs.forEach((leg, index) => {
+        if (leg.pivotTime > 0 && index > 0) {
+            const prevLeg = legs[index - 1];
+            const pivotCenter = predictedPathPoints[index]; // Pivot happens at the predicted waypoint location
+            const radius = ship.length / 2;
+            
+            const startHeading = prevLeg.endHeading;
+            const endHeading = leg.startHeading;
+            
+            // Bow Arc (Green)
+            const bowArcPoints = getArcPoints(pivotCenter, radius, startHeading, endHeading);
+            layersRef.current.push(L.polyline(bowArcPoints.map(p => [p.lat, p.lng]), {
+                color: '#22c55e', // green-500
+                weight: 2,
+                dashArray: '5, 5',
+                interactive: false
+            }).addTo(map));
+
+            // Stern Arc (Red)
+            const sternArcPoints = getArcPoints(pivotCenter, radius, startHeading + 180, endHeading + 180);
+            layersRef.current.push(L.polyline(sternArcPoints.map(p => [p.lat, p.lng]), {
+                color: '#ef4444', // red-500
+                weight: 2,
+                dashArray: '5, 5',
+                interactive: false
+            }).addTo(map));
+        }
+    });
+
     if (legs.length > 0 && !animationState) {
       const shipPolygons = legs.map((leg, index) => {
           let color: string;
