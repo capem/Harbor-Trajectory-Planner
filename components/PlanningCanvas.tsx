@@ -26,7 +26,6 @@ interface PlanningCanvasProps {
   environmentalFactors: EnvironmentalFactors;
   pivotDuration: number;
   waypointSettings: WaypointSettings;
-  isSidebarOpen: boolean;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -119,8 +118,7 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
 const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ 
     waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, 
     onSpeedChange, onPropulsionChange, legs, zoomToFitTrigger, isMeasuring, isPlotting, 
-    hoveredLegId, animationState, mapTileLayer, environmentalFactors, pivotDuration, waypointSettings,
-    isSidebarOpen
+    hoveredLegId, animationState, mapTileLayer, environmentalFactors, pivotDuration, waypointSettings
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -182,34 +180,23 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     }
   }, [mapContainerRef]);
 
-  // Effect to handle map resizing when sidebar toggles, creating a smooth "push" effect.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    const mapContainer = mapContainerRef.current;
+    if (!map || !mapContainer) return;
 
-    // The sidebar transition is 300ms. We'll run invalidateSize for this duration
-    // to keep the map in sync with its container's changing size.
-    const transitionDuration = 300;
-    let start: number | null = null;
-    let frameId: number;
+    // This observer automatically calls invalidateSize whenever the map container resizes,
+    // which is perfect for smoothly handling the sidebar animation.
+    const resizeObserver = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
 
-    const animateResize = (timestamp: number) => {
-      if (!start) start = timestamp;
-      const elapsed = timestamp - start;
-
-      map.invalidateSize({ animate: false });
-
-      if (elapsed < transitionDuration) {
-        frameId = requestAnimationFrame(animateResize);
-      }
-    };
-
-    frameId = requestAnimationFrame(animateResize);
+    resizeObserver.observe(mapContainer);
 
     return () => {
-      cancelAnimationFrame(frameId);
-    }
-  }, [isSidebarOpen]);
+      resizeObserver.disconnect();
+    };
+  }, [mapInstance]);
 
   useEffect(() => {
     const map = mapRef.current;
