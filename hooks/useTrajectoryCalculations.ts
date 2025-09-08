@@ -144,6 +144,28 @@ function calculateTurnRadius(p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPo
     return numerator / denominator;
 }
 
+function getDynamicLeewayFactor(shipSpeedKnots: number): number {
+    const maxLeewayFactor = 0.025; // Tuned down from 0.04 for more realism
+    const minLeewayFactor = 0.005; // Tuned down from 0.01
+    const fullEffectSpeed = 0.5; // Speed (knots) below which the leeway effect is scaled linearly
+
+    // At very low speeds, the inverse relationship between time and speed causes extreme drift calculations.
+    // To create a smoother, more realistic effect, we scale the leeway factor linearly from 0 up to a small threshold speed.
+    // This makes the total drift *displacement* over a given distance constant at these low speeds, preventing the "jump".
+    if (shipSpeedKnots <= fullEffectSpeed) {
+        // Linearly ramp up from 0 at 0 knots to maxLeewayFactor at fullEffectSpeed knots.
+        return (shipSpeedKnots / fullEffectSpeed) * maxLeewayFactor;
+    }
+
+    // Beyond the threshold, use an inverse relationship for realistic reduction at higher speeds.
+    const speedForHalfReduction = 5.0; 
+    // We subtract fullEffectSpeed from the current speed to make the transition seamless.
+    const effectiveSpeed = shipSpeedKnots - fullEffectSpeed;
+    const factor = minLeewayFactor + (maxLeewayFactor - minLeewayFactor) / (1 + effectiveSpeed / speedForHalfReduction);
+    
+    return factor;
+}
+
 
 export function calculateTrajectory(waypoints: Waypoint[], ship: Ship, pivotDuration: number, environmentalFactors: EnvironmentalFactors): TrajectoryLeg[] {
   if (waypoints.length < 2) {
@@ -193,7 +215,6 @@ export function calculateTrajectory(waypoints: Waypoint[], ship: Ship, pivotDura
     if (environmentalFactors.driftEnabled) {
       const hasCurrent = environmentalFactors.current.speed > 0;
       const hasWind = environmentalFactors.wind.speed > 0;
-      const leewayFactor = 0.03; // A simple model: leeway speed is ~3% of wind speed.
       
       if (hasCurrent || hasWind) {
           // Ship's intended velocity vector
@@ -216,6 +237,7 @@ export function calculateTrajectory(waypoints: Waypoint[], ship: Ship, pivotDura
           // Wind's effect (leeway) velocity vector
           let windVx = 0, windVy = 0;
           if (hasWind) {
+              const leewayFactor = getDynamicLeewayFactor(speedKnots);
               const windSpeedMps = environmentalFactors.wind.speed * 0.514444;
               const windLeewaySpeedMps = windSpeedMps * leewayFactor;
               // Wind direction is where it comes FROM. The force is applied in the opposite direction.

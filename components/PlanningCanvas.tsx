@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Waypoint, Ship, GeoPoint, TrajectoryLeg, NavigationCommand, AnimationState, PropulsionDirection, MapTileLayer, EnvironmentalFactors, WaypointSettings, WaypointShape } from '../types';
 import { calculateTrajectory } from '../hooks/useTrajectoryCalculations';
 import WaypointContextMenu from './WaypointContextMenu';
@@ -137,6 +137,20 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
   
   const plotPreviewLineRef = useRef<any>(null);
   const plotPreviewTooltipRef = useRef<any>(null);
+
+  const predictedPathPoints = useMemo(() => {
+    if (!environmentalFactors.driftEnabled || waypoints.length < 1) {
+        return waypoints;
+    }
+    const predictedEnds = legs
+        .map(l => l.predictedEnd)
+        .filter((p): p is GeoPoint => p !== undefined && p !== null);
+
+    if (predictedEnds.length === waypoints.length - 1) {
+        return [waypoints[0], ...predictedEnds];
+    }
+    return waypoints; // Fallback if arrays are out of sync
+  }, [waypoints, legs, environmentalFactors.driftEnabled]);
 
   useEffect(() => {
     if (mapContainerRef.current && !mapRef.current) {
@@ -411,22 +425,12 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     layersRef.current.push(...waypointMarkers);
 
     // --- Predicted Path (COG) ---
-    const driftedWaypoints: GeoPoint[] = [];
-    if (waypoints.length > 0) {
-      driftedWaypoints.push(waypoints[0]);
-      legs.forEach(leg => {
-        if (leg.predictedEnd) {
-          driftedWaypoints.push(leg.predictedEnd);
-        }
-      });
-    }
-
-    if (driftedWaypoints.length > 1) {
-        for (let i = 0; i < driftedWaypoints.length - 1; i++) {
-             const p0 = driftedWaypoints[i - 1] || driftedWaypoints[i];
-             const p1 = driftedWaypoints[i];
-             const p2 = driftedWaypoints[i + 1];
-             const p3 = driftedWaypoints[i + 2] || driftedWaypoints[i + 1];
+    if (predictedPathPoints.length > 1 && environmentalFactors.driftEnabled) {
+        for (let i = 0; i < predictedPathPoints.length - 1; i++) {
+             const p0 = predictedPathPoints[i - 1] || predictedPathPoints[i];
+             const p1 = predictedPathPoints[i];
+             const p2 = predictedPathPoints[i + 1];
+             const p3 = predictedPathPoints[i + 2] || predictedPathPoints[i + 1];
              
              const interpolator = (t: number) => ({ lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat), lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng) });
              const segmentPoints = Array.from({ length: 15 }, (_, j) => j / 15).map(interpolator);
@@ -468,33 +472,49 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     }
     
     if (legs.length > 0 && !animationState) {
-        const shipPolygons = legs.map((leg) => {
-            let color: string;
-            switch (leg.command) {
-              case NavigationCommand.START:
-              case NavigationCommand.STARBOARD:
-                color = '#16a34a'; // Green for start and starboard turns
-                break;
-              case NavigationCommand.PORT:
-                color = '#dc2626'; // Red for port turns
-                break;
-              case NavigationCommand.END:
-                color = '#facc15'; // Yellow for final position
-                break;
-              case NavigationCommand.STRAIGHT:
-              default:
-                color = '#2563eb'; // Blue for straight
-                break;
-            }
-            // Apply course correction angle to visualize "crabbing"
-            const correctedHeading = leg.startHeading + (leg.courseCorrectionAngle || 0);
-            const shipCoords = getShipPolygonCoords(leg.start, ship.length, ship.beam, correctedHeading);
+      const shipPolygons = legs.map((leg, index) => {
+          let color: string;
+          switch (leg.command) {
+            case NavigationCommand.START:
+            case NavigationCommand.STARBOARD:
+              color = '#16a34a'; // Green for start and starboard turns
+              break;
+            case NavigationCommand.PORT:
+              color = '#dc2626'; // Red for port turns
+              break;
+            case NavigationCommand.END:
+              color = '#facc15'; // Yellow for final position
+              break;
+            case NavigationCommand.STRAIGHT:
+            default:
+              color = '#2563eb'; // Blue for straight
+              break;
+          }
 
-            return L.polygon(shipCoords.map(p => [p.lat, p.lng]), { color, fillColor: color, fillOpacity: 0.5, weight: 1, interactive: false, zIndexOffset: -1000 }).addTo(map);
-        }).filter(Boolean);
-        layersRef.current.push(...shipPolygons);
+          // Position is determined from the predicted path points for accuracy
+          const shipPosition = predictedPathPoints[index];
+          if (!shipPosition) return null;
+
+          // For the final "END" leg, use the heading/correction from the previous leg
+          const finalLegState = index > 0 ? legs[index - 1] : leg;
+          const heading = leg.command === NavigationCommand.END ? finalLegState.endHeading : leg.startHeading;
+          const correction = leg.command === NavigationCommand.END ? finalLegState.courseCorrectionAngle : leg.courseCorrectionAngle;
+          
+          const correctedHeading = heading + (correction || 0);
+          const shipCoords = getShipPolygonCoords(shipPosition, ship.length, ship.beam, correctedHeading);
+
+          return L.polygon(shipCoords.map(p => [p.lat, p.lng]), { 
+              color, 
+              fillColor: color, 
+              fillOpacity: 0.5, 
+              weight: 1, 
+              interactive: false, 
+              zIndexOffset: -1000 
+          }).addTo(map);
+      }).filter(Boolean);
+      layersRef.current.push(...shipPolygons);
     }
-  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId, animationState, onPropulsionChange, onSpeedChange, environmentalFactors, pivotDuration, waypointSettings]);
+  }, [waypoints, ship, legs, onUpdateWaypoint, onDeleteWaypoint, isMeasuring, isPlotting, hoveredLegId, animationState, onPropulsionChange, onSpeedChange, environmentalFactors, pivotDuration, waypointSettings, predictedPathPoints]);
   
   useEffect(() => {
     if (zoomToFitTrigger === 0 || !mapRef.current || waypoints.length === 0) return;
