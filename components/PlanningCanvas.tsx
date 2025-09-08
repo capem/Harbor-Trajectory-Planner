@@ -427,15 +427,25 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     // --- Predicted Path (COG) ---
     if (predictedPathPoints.length > 1 && environmentalFactors.driftEnabled) {
         for (let i = 0; i < predictedPathPoints.length - 1; i++) {
-             const p0 = predictedPathPoints[i - 1] || predictedPathPoints[i];
-             const p1 = predictedPathPoints[i];
-             const p2 = predictedPathPoints[i + 1];
-             const p3 = predictedPathPoints[i + 2] || predictedPathPoints[i + 1];
-             
-             const interpolator = (t: number) => ({ lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat), lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng) });
-             const segmentPoints = Array.from({ length: 15 }, (_, j) => j / 15).map(interpolator);
-             segmentPoints.push(p2);
-             layersRef.current.push(L.polyline(segmentPoints.map(p => [p.lat, p.lng]), { color: '#f97316', weight: 4, opacity: 0.8, interactive: false }).addTo(map));
+            // Use the same control point logic as the animation hook to ensure visual consistency.
+            // This correctly handles "breaks" in the curve when switching propulsion direction.
+            const legPropulsion = waypoints[i]?.propulsionDirection ?? PropulsionDirection.FORWARD;
+            const prevLegPropulsion = waypoints[i - 1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
+            const nextLegPropulsion = waypoints[i + 1]?.propulsionDirection ?? PropulsionDirection.FORWARD;
+
+            const p1 = predictedPathPoints[i];
+            const p2 = predictedPathPoints[i + 1];
+
+            // If propulsion changes at the start of this leg, p0 should be the same as p1 to create a sharp corner.
+            const p0 = (i > 0 && legPropulsion === prevLegPropulsion) ? predictedPathPoints[i - 1] : p1;
+            // If propulsion changes at the end of this leg, p3 should be the same as p2.
+            const p3 = (predictedPathPoints[i + 2] && nextLegPropulsion === legPropulsion) ? predictedPathPoints[i + 2] : p2;
+
+            const interpolator = (t: number) => ({ lat: catmullRom(t, p0.lat, p1.lat, p2.lat, p3.lat), lng: catmullRom(t, p0.lng, p1.lng, p2.lng, p3.lng) });
+            const segmentPoints = Array.from({ length: 15 }, (_, j) => j / 15).map(interpolator);
+            segmentPoints.push(p2);
+            
+            layersRef.current.push(L.polyline(segmentPoints.map(p => [p.lat, p.lng]), { color: '#f97316', weight: 4, opacity: 0.8, interactive: false }).addTo(map));
         }
     }
 
