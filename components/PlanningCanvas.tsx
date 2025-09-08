@@ -26,6 +26,7 @@ interface PlanningCanvasProps {
   environmentalFactors: EnvironmentalFactors;
   pivotDuration: number;
   waypointSettings: WaypointSettings;
+  isSidebarOpen: boolean;
 }
 
 // --- GEO HELPER FUNCTIONS FOR SHIP VISUALIZATION ---
@@ -118,7 +119,8 @@ function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): 
 const PlanningCanvas: React.FC<PlanningCanvasProps> = ({ 
     waypoints, ship, onAddWaypoint, onUpdateWaypoint, onDeleteWaypoint, 
     onSpeedChange, onPropulsionChange, legs, zoomToFitTrigger, isMeasuring, isPlotting, 
-    hoveredLegId, animationState, mapTileLayer, environmentalFactors, pivotDuration, waypointSettings
+    hoveredLegId, animationState, mapTileLayer, environmentalFactors, pivotDuration, waypointSettings,
+    isSidebarOpen
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -179,6 +181,35 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
       speedControlRef.current = speedControl;
     }
   }, [mapContainerRef]);
+
+  // Effect to handle map resizing when sidebar toggles, creating a smooth "push" effect.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // The sidebar transition is 300ms. We'll run invalidateSize for this duration
+    // to keep the map in sync with its container's changing size.
+    const transitionDuration = 300;
+    let start: number | null = null;
+    let frameId: number;
+
+    const animateResize = (timestamp: number) => {
+      if (!start) start = timestamp;
+      const elapsed = timestamp - start;
+
+      map.invalidateSize({ animate: false });
+
+      if (elapsed < transitionDuration) {
+        frameId = requestAnimationFrame(animateResize);
+      }
+    };
+
+    frameId = requestAnimationFrame(animateResize);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+    }
+  }, [isSidebarOpen]);
 
   useEffect(() => {
     const map = mapRef.current;
