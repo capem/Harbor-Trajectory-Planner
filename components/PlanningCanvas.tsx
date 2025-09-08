@@ -523,6 +523,44 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
     }
     
     // --- Draw Pivot Arcs ---
+    const drawArcWithArrow = (center: GeoPoint, radius: number, startBearing: number, endBearing: number, color: string) => {
+        const arcPoints = getArcPoints(center, radius, startBearing, endBearing);
+        if (arcPoints.length < 2) return;
+
+        // Draw arc line (solid, no dash)
+        layersRef.current.push(L.polyline(arcPoints.map(p => [p.lat, p.lng]), {
+            color,
+            weight: 2,
+            interactive: false
+        }).addTo(map));
+
+        // Draw arrowhead at the end
+        const p_end = arcPoints[arcPoints.length - 1];
+        // Arrowhead size in meters, proportional to radius but capped for sanity.
+        const arrowLength = Math.min(radius * 0.3, 12);
+        const arrowAngle = 30; // degrees from the main line
+
+        // Determine turn direction to calculate the tangent at the end of the arc
+        let angleDiff = endBearing - startBearing;
+        if (angleDiff > 180) angleDiff -= 360;
+        if (angleDiff < -180) angleDiff += 360;
+
+        const tangentBearing = (angleDiff >= 0)
+            ? (endBearing + 90 + 360) % 360 // Clockwise turn
+            : (endBearing - 90 + 360) % 360; // Counter-clockwise turn
+
+        // Calculate the two points of the arrowhead, pointing backwards from the tangent
+        const arrowPoint1 = destinationPoint(p_end, arrowLength, (tangentBearing + 180 - arrowAngle + 360) % 360);
+        const arrowPoint2 = destinationPoint(p_end, arrowLength, (tangentBearing + 180 + arrowAngle + 360) % 360);
+
+        // Draw the arrowhead shape
+        layersRef.current.push(L.polyline([
+            [arrowPoint1.lat, arrowPoint1.lng],
+            [p_end.lat, p_end.lng],
+            [arrowPoint2.lat, arrowPoint2.lng],
+        ], { color, weight: 2, interactive: false }).addTo(map));
+    };
+    
     legs.forEach((leg, index) => {
         if (leg.pivotTime > 0 && index > 0) {
             const prevLeg = legs[index - 1];
@@ -533,22 +571,10 @@ const PlanningCanvas: React.FC<PlanningCanvasProps> = ({
             const endHeading = leg.startHeading;
             
             // Bow Arc (Green)
-            const bowArcPoints = getArcPoints(pivotCenter, radius, startHeading, endHeading);
-            layersRef.current.push(L.polyline(bowArcPoints.map(p => [p.lat, p.lng]), {
-                color: '#22c55e', // green-500
-                weight: 2,
-                dashArray: '5, 5',
-                interactive: false
-            }).addTo(map));
+            drawArcWithArrow(pivotCenter, radius, startHeading, endHeading, '#22c55e');
 
             // Stern Arc (Red)
-            const sternArcPoints = getArcPoints(pivotCenter, radius, startHeading + 180, endHeading + 180);
-            layersRef.current.push(L.polyline(sternArcPoints.map(p => [p.lat, p.lng]), {
-                color: '#ef4444', // red-500
-                weight: 2,
-                dashArray: '5, 5',
-                interactive: false
-            }).addTo(map));
+            drawArcWithArrow(pivotCenter, radius, startHeading + 180, endHeading + 180, '#ef4444');
         }
     });
 
